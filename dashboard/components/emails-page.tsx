@@ -1,71 +1,66 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { useEffect, useMemo, useState } from "react"
+
+import { useAuth } from "@clerk/nextjs"
+import { AlertTriangle, Filter, Mail, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Search, Filter, AlertTriangle, Mail, CheckCircle2, XCircle } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { fetchEmails, type Email } from "@/lib/api"
 
-const emails = [
-  {
-    id: "EM001",
-    recipient: "john.doe@company.com",
-    subject: "Urgent: Account Verification Required",
-    status: "blocked",
-    threat: "Phishing Attempt",
-    timestamp: "2024-01-15 14:32:15",
-    sender: "support@paypa1.com",
-  },
-  {
-    id: "EM002",
-    recipient: "sarah.smith@company.com",
-    subject: "Q4 Financial Report - Review Required",
-    status: "clean",
-    threat: null,
-    timestamp: "2024-01-15 14:28:42",
-    sender: "finance@company.com",
-  },
-  {
-    id: "EM003",
-    recipient: "mike.jones@company.com",
-    subject: "Invoice #INV-2024-4589",
-    status: "blocked",
-    threat: "Malicious Attachment",
-    timestamp: "2024-01-15 14:15:33",
-    sender: "billing@supp1ier.com",
-  },
-  {
-    id: "EM004",
-    recipient: "emma.wilson@company.com",
-    subject: "Team Meeting Notes - January",
-    status: "clean",
-    threat: null,
-    timestamp: "2024-01-15 14:02:18",
-    sender: "admin@company.com",
-  },
-  {
-    id: "EM005",
-    recipient: "david.brown@company.com",
-    subject: "Password Reset Request",
-    status: "blocked",
-    threat: "Suspicious Link",
-    timestamp: "2024-01-15 13:55:27",
-    sender: "security@g00gle.com",
-  },
-  {
-    id: "EM006",
-    recipient: "lisa.garcia@company.com",
-    subject: "Weekly Newsletter - Tech Updates",
-    status: "clean",
-    threat: null,
-    timestamp: "2024-01-15 13:42:11",
-    sender: "newsletter@techblog.com",
-  },
-]
+const tierColor: Record<string, string> = {
+  SAFE: "text-green-500 bg-green-500/10",
+  CAUTIOUS: "text-yellow-600 bg-yellow-500/10",
+  THREAT: "text-destructive bg-destructive/10",
+}
 
 export function EmailsPage() {
+  const { getToken } = useAuth()
+  const [emails, setEmails] = useState<Email[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const token = await getToken()
+        if (!token) {
+          throw new Error("Not authenticated")
+        }
+        const data = await fetchEmails(token)
+        if (active) {
+          setEmails(data)
+        }
+      } catch (err) {
+        if (active) {
+          setError(err instanceof Error ? err.message : "Failed to fetch emails")
+        }
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void load()
+    return () => {
+      active = false
+    }
+  }, [getToken])
+
+  const filteredEmails = useMemo(() => {
+    if (statusFilter === "all") return emails
+    return emails.filter((email) => email.status === statusFilter)
+  }, [emails, statusFilter])
+
   return (
     <div className="space-y-6">
       <div>
@@ -74,44 +69,50 @@ export function EmailsPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <Card className="border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Scanned</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-foreground">45,231</div>
-            <p className="text-xs text-muted-foreground mt-1">Last 24 hours</p>
+            <div className="text-2xl font-bold text-foreground">{emails.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">Current dataset</p>
           </CardContent>
         </Card>
 
         <Card className="border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Clean</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Safe</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-500">44,964</div>
-            <p className="text-xs text-muted-foreground mt-1">99.4% success rate</p>
+            <div className="text-2xl font-bold text-green-500">
+              {emails.filter((e) => e.risk_tier === "SAFE").length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Marked as low risk</p>
           </CardContent>
         </Card>
 
         <Card className="border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Threats Blocked</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Cautious</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive">267</div>
-            <p className="text-xs text-muted-foreground mt-1">0.6% threat rate</p>
+            <div className="text-2xl font-bold text-yellow-500">
+              {emails.filter((e) => e.risk_tier === "CAUTIOUS").length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Review recommended</p>
           </CardContent>
         </Card>
 
         <Card className="border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Under Review</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Threat</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-chart-3">12</div>
-            <p className="text-xs text-muted-foreground mt-1">Manual inspection</p>
+            <div className="text-2xl font-bold text-destructive">
+              {emails.filter((e) => e.risk_tier === "THREAT").length}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">High risk detected</p>
           </CardContent>
         </Card>
       </div>
@@ -129,15 +130,16 @@ export function EmailsPage() {
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Search emails..." className="pl-8" />
               </div>
-              <Select defaultValue="all">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-32">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="clean">Clean</SelectItem>
-                  <SelectItem value="blocked">Blocked</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="PENDING">Pending</SelectItem>
+                  <SelectItem value="PROCESSING">Processing</SelectItem>
+                  <SelectItem value="COMPLETED">Completed</SelectItem>
+                  <SelectItem value="FAILED">Failed</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" size="icon">
@@ -147,65 +149,76 @@ export function EmailsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email ID</TableHead>
-                <TableHead>Recipient</TableHead>
-                <TableHead>Sender</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Threat</TableHead>
-                <TableHead>Timestamp</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {emails.map((email) => (
-                <TableRow key={email.id} className="cursor-pointer hover:bg-accent/50">
-                  <TableCell>
-                    <code className="text-xs font-mono text-muted-foreground">{email.id}</code>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-sm text-foreground">{email.recipient}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm text-foreground">{email.sender}</span>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm text-foreground max-w-xs truncate block">{email.subject}</span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      {email.status === "clean" ? (
-                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-destructive" />
-                      )}
-                      <Badge variant={email.status === "clean" ? "secondary" : "destructive"} className="text-xs">
-                        {email.status === "clean" ? "Clean" : "Blocked"}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {email.threat ? (
-                      <div className="flex items-center gap-1">
-                        <AlertTriangle className="h-3 w-3 text-destructive" />
-                        <span className="text-xs text-destructive font-medium">{email.threat}</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">None detected</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-xs text-muted-foreground">{email.timestamp}</span>
-                  </TableCell>
+          {error && <p className="text-sm text-destructive mb-4">Error: {error}</p>}
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading emails...</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email ID</TableHead>
+                  <TableHead>Recipient</TableHead>
+                  <TableHead>Sender</TableHead>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Risk</TableHead>
+                  <TableHead>Score</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filteredEmails.map((email) => (
+                  <TableRow key={email.id} className="cursor-pointer hover:bg-accent/50">
+                    <TableCell>
+                      <code className="text-xs font-mono text-muted-foreground">{email.id}</code>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-sm text-foreground">{email.recipient}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-foreground">{email.sender}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-foreground max-w-xs truncate block">{email.subject}</span>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {email.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {email.risk_tier ? (
+                          <>
+                            <div className={`h-2 w-2 rounded-full ${tierColor[email.risk_tier] ?? "bg-muted"}`} />
+                            <span className={`text-xs font-medium ${tierColor[email.risk_tier] ?? "text-muted-foreground"}`}>
+                              {email.risk_tier}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Pending</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs text-muted-foreground">
+                        {email.risk_score !== undefined ? email.risk_score : "-"}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {!filteredEmails.length && !loading && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
+                      No emails found for this filter.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>
