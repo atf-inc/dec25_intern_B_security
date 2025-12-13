@@ -37,6 +37,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.accessToken = token.accessToken as string
       session.refreshToken = token.refreshToken as string
       session.expiresAt = token.expiresAt as number
+
+      if (session.user && token.picture) {
+        session.user.image = token.picture
+      }
+
       return session
     },
   },

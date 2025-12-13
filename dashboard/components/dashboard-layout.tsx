@@ -30,6 +30,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { data: session } = useSession()
 
+  // Debug: Check if image URL is present and looks correct
+  // if (session?.user) {
+  //   console.log("Session User:", session.user)
+  //   console.log("Image URL:", session.user.image)
+  // }
+
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
@@ -128,7 +134,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuItem>Profile Settings</DropdownMenuItem>
                 <DropdownMenuItem>Preferences</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/" })}>Log out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
