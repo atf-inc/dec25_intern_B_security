@@ -1,0 +1,12 @@
+{
+  "name": "dec25_intern_b_security",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix dashboard\" \"source .venv/bin/activate && cd dashboard-backend && python -m uvicorn main:app --reload --port 8000\" \"source .venv/bin/activate && cd agent-backend && python -m uvicorn main:app --reload --port 8001\"",
+    "start": "npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

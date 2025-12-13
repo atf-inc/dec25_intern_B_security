@@ -1,0 +1,18 @@
+# AI Agent Rules
+
+## Git & Version Control
+- **Commit Messages**: When generating git commit messages, BE DESCRIPTIVE. Do not use generic messages.
+  - Structure: `<type>(<scope>): <subject>`
+  - Format: Follow Conventional Commits.
+  - Detail: Include a body explaining "why" the change was made, not just "what".
+- **Pull Requests**: Provide comprehensive PR titles and descriptions.
+  - Titles should summarize the main change.
+  - Descriptions must include:
+    - Summary of changes
+    - Key implementation details
+    - Testing steps performed
+    - Checklist of verified items
+
+## General
+- Follow the existing project structure and conventions.
+- Ensure all new dependencies are properly recorded in package files.
