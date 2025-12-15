@@ -3,7 +3,6 @@ import math
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-import datetime
 
 logger = logging.getLogger(__name__)
 
