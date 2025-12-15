@@ -29,7 +29,10 @@ export function EmailsPage() {
   const [error, setError] = useState<string | null>(null)
 
   const loadEmails = useCallback(async () => {
-    if (!session?.accessToken) return
+    if (!session?.accessToken) {
+      setEmails([])
+      return
+    }
 
     setLoading(true)
     setError(null)
@@ -70,58 +73,129 @@ export function EmailsPage() {
       </div>
 
       {session ? (
-        /* Stats Cards */
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card className="border-border">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Scanned</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-foreground">{totalScanned}</div>
-              <p className="text-xs text-muted-foreground mt-1">From recent inbox</p>
-            </CardContent>
-          </Card>
+        <>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <Card className="border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Total Scanned</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-foreground">{totalScanned}</div>
+                <p className="text-xs text-muted-foreground mt-1">From recent inbox</p>
+              </CardContent>
+            </Card>
 
-          <Card className="border-border">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Clean</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-500">{cleanCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">Safe emails</p>
-            </CardContent>
-          </Card>
+            <Card className="border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Clean</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-500">{cleanCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Safe emails</p>
+              </CardContent>
+            </Card>
 
-          <Card className="border-border">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Unscanned</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-yellow-500">{unscannedCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">Pending analysis</p>
-            </CardContent>
-          </Card>
+            <Card className="border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Unscanned</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-yellow-500">{unscannedCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Pending analysis</p>
+              </CardContent>
+            </Card>
 
-          <Card className="border-border">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Threats Blocked</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-destructive">{threatsCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">Detected threats</p>
-            </CardContent>
-          </Card>
+            <Card className="border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Threats Blocked</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-destructive">{threatsCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Detected threats</p>
+              </CardContent>
+            </Card>
 
+            <Card className="border-border">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Under Review</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-chart-3">{manualCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Pending scan</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Email Logs Table */}
           <Card className="border-border">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Under Review</CardTitle>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-foreground">Email Activity Log</CardTitle>
+                  <CardDescription>Recent emails from your inbox</CardDescription>
+                </div>
+                {/* ... Filters ... */}
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-chart-3">{manualCount}</div>
-              <p className="text-xs text-muted-foreground mt-1">Pending scan</p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email ID</TableHead>
+                    <TableHead>Sender</TableHead>
+                    <TableHead>Subject</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8">
+                        Loading emails...
+                      </TableCell>
+                    </TableRow>
+                  ) : error ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-destructive">
+                        {error}
+                      </TableCell>
+                    </TableRow>
+                  ) : emails.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                        No emails found.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    emails.map((email) => (
+                      <TableRow key={email.id} className="cursor-pointer hover:bg-accent/50">
+                        <TableCell>
+                          <code className="text-xs font-mono text-muted-foreground">{email.id.substring(0, 8)}</code>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-foreground">{email.sender}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-foreground max-w-xs truncate block">{email.subject}</span>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs">
+                            {email.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">{email.date}</span>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
-        </div>
+        </>
       ) : (
         <Card className="bg-muted/50 border-dashed">
           <CardContent className="pt-6 text-center text-muted-foreground">
@@ -129,75 +203,6 @@ export function EmailsPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* Email Logs Table */}
-      <Card className="border-border">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-foreground">Email Activity Log</CardTitle>
-              <CardDescription>Recent emails from your inbox</CardDescription>
-            </div>
-            {/* ... Filters ... */}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email ID</TableHead>
-                <TableHead>Sender</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">
-                    Loading emails...
-                  </TableCell>
-                </TableRow>
-              ) : error ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-destructive">
-                    {error}
-                  </TableCell>
-                </TableRow>
-              ) : emails.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                    No emails found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                emails.map((email) => (
-                  <TableRow key={email.id} className="cursor-pointer hover:bg-accent/50">
-                    <TableCell>
-                      <code className="text-xs font-mono text-muted-foreground">{email.id.substring(0, 8)}</code>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-foreground">{email.sender}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-foreground max-w-xs truncate block">{email.subject}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-xs">
-                        {email.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground">{email.date}</span>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   )
 }
