@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
+import sys
 from dataclasses import dataclass
 from typing import Optional
 import uuid
@@ -17,6 +19,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from .database import get_session, init_db
 from .models import EmailEvent, EmailStatus, Organisation, RiskTier, User
 from .models import UserRole  # noqa: F401 (used in Enum creation)
+
+logger = logging.getLogger(__name__)
 
 
 def _hash_api_key(api_key: str) -> str:
@@ -39,11 +43,50 @@ def _verify_api_key_hash(plaintext_key: str, stored_hash: str) -> bool:
     """Verify an API key against its stored hash."""
     return secrets.compare_digest(_hash_api_key(plaintext_key), stored_hash)
 
+
+def _validate_cors_config() -> list[str]:
+    """Validate CORS configuration and return parsed origins list.
+    
+    Fails fast if credentials are enabled with wildcard origins (insecure).
+    """
+    cors_origins_raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+    allow_credentials = True  # We always use credentials for auth
+    
+    if not cors_origins_raw:
+        logger.error(
+            "CORS_ALLOW_ORIGINS environment variable is not set. "
+            "Please set it to a comma-separated list of allowed origins."
+        )
+        sys.exit(1)
+    
+    # Parse comma-separated origins, trim whitespace
+    origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
+    
+    if not origins:
+        logger.error("CORS_ALLOW_ORIGINS is empty after parsing.")
+        sys.exit(1)
+    
+    # Check for wildcard with credentials - this is invalid per CORS spec
+    if "*" in origins and allow_credentials:
+        logger.error(
+            "SECURITY ERROR: CORS_ALLOW_ORIGINS='*' with allow_credentials=True is invalid. "
+            "Browsers will reject this configuration. "
+            "Please specify explicit origins (e.g., 'http://localhost:3000,https://app.example.com')."
+        )
+        sys.exit(1)
+    
+    logger.info(f"CORS configured for origins: {origins}")
+    return origins
+
+
+# Validate CORS configuration before app creation
+_cors_origins = _validate_cors_config()
+
 app = FastAPI(title="PhishGuard Dashboard API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
