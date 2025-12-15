@@ -119,7 +119,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                       {user?.firstName?.substring(0, 2).toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="text-sm">{user?.fullName || "User"}</span>
+                  <span className="text-sm">{user?.firstName ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}` : "User"}</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
