@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { Shield, Users, Mail, Settings, LayoutDashboard, Bell, ChevronDown } from "lucide-react"
-import { useSession, signOut } from "next-auth/react"
+import { useUser, useClerk } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -28,7 +28,8 @@ const navigation = [
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { data: session } = useSession()
+  const { user } = useUser()
+  const { signOut } = useClerk()
 
   return (
     <div className="flex h-screen bg-background">
@@ -113,12 +114,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={session?.user?.image || "/placeholder.svg"} />
+                    <AvatarImage src={user?.imageUrl || "/placeholder.svg"} />
                     <AvatarFallback>
-                      {session?.user?.name?.substring(0, 2).toUpperCase() || "U"}
+                      {user?.firstName?.substring(0, 2).toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="text-sm">{session?.user?.name || "User"}</span>
+                  <span className="text-sm">{user?.fullName || "User"}</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -128,7 +129,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuItem>Profile Settings</DropdownMenuItem>
                 <DropdownMenuItem>Preferences</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => signOut({ redirectUrl: "/sign-in" })}>Log out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
