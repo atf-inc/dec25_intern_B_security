@@ -204,7 +204,7 @@ export function EmailsPage() {
                     </TableCell>
                     <TableCell>
                       <span className="text-xs text-muted-foreground">
-                        {email.risk_score !== undefined ? email.risk_score : "-"}
+                        {email.risk_score ?? "-"}
                       </span>
                     </TableCell>
                   </TableRow>
