@@ -6,7 +6,7 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel.ext.asyncio.session import create_async_engine
 
-from .models import EmailEvent, Organisation, User  # noqa: F401 - ensure metadata import
+from models import EmailEvent, Organisation, User  # noqa: F401 - ensure metadata import
 
 load_dotenv()
 
