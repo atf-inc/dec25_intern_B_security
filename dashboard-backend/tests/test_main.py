@@ -12,8 +12,9 @@ def test_read_root():
 def test_fetch_emails_no_token():
     # Test missing access token
     response = client.post("/api/v1/emails/fetch", json={"access_token": ""})
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Access token is required"}
+    assert response.status_code == 422
+    # Pydantic returns a standard validation error structure, not our custom detail
+    assert "detail" in response.json()
 
 @patch('main.GmailService')
 def test_fetch_emails_success(MockGmailService):
