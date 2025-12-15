@@ -1,14 +1,13 @@
 "use client"
 
-import { useSession } from "next-auth/react"
+import { useUser, SignIn } from "@clerk/nextjs"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { OverviewPage } from "@/components/overview-page"
-import { LoginCard } from "@/components/auth-components"
 
 export default function Home() {
-  const { data: session, status } = useSession()
+  const { isLoaded, isSignedIn } = useUser()
 
-  if (status === "loading") {
+  if (!isLoaded) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-lg">Loading...</div>
@@ -16,8 +15,12 @@ export default function Home() {
     )
   }
 
-  if (!session) {
-    return <LoginCard />
+  if (!isSignedIn) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <SignIn />
+      </div>
+    )
   }
 
   return (

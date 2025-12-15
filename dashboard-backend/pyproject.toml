@@ -9,4 +9,10 @@ dependencies = [
     "google-api-python-client>=2.155.0",
     "google-auth>=2.36.0",
     "requests>=2.32.4",
+    "sqlmodel>=0.0.27",
+    "asyncpg>=0.31.0",
+    "psycopg2-binary>=2.9.9",
+    "pyjwt>=2.10.1",
+    "cryptography>=46.0.3",
+    "python-dotenv>=1.0.1",
 ]

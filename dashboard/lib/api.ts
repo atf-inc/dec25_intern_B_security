@@ -1,17 +1,62 @@
-const BACKEND_URL = "http://localhost:8000/api/v1"
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
-export async function fetchEmails(accessToken: string) {
-    const response = await fetch(`${BACKEND_URL}/emails/fetch`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ access_token: accessToken }),
-    })
+type FetchOptions = {
+  token?: string
+}
 
-    if (!response.ok) {
-        throw new Error("Failed to fetch emails")
+async function request<T>(path: string, { token }: FetchOptions = {}): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    cache: "no-store",
+  })
+
+  if (!res.ok) {
+    let errorMessage = `API request failed (${res.status})`
+    if (process.env.NODE_ENV === "development") {
+      try {
+        const body = await res.text()
+        errorMessage += `: ${body}`
+      } catch {
+        // Ignore parsing errors
+      }
     }
+    throw new Error(errorMessage)
+  }
 
-    return response.json()
+  return res.json() as Promise<T>
+}
+
+export type Email = {
+  id: string
+  sender: string
+  recipient: string
+  subject: string
+  body_preview?: string
+  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED"
+  risk_score?: number
+  risk_tier?: "SAFE" | "CAUTIOUS" | "THREAT"
+  analysis_result?: Record<string, unknown>
+}
+
+export async function fetchEmails(token: string): Promise<Email[]> {
+  return request<Email[]>("/api/emails", { token })
+}
+
+export async function fetchGmailEmails(accessToken: string) {
+  const response = await fetch(`${API_URL}/api/v1/emails/fetch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ access_token: accessToken }),
+  })
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch emails")
+  }
+
+  return response.json()
 }
