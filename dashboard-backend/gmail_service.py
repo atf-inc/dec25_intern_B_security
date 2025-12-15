@@ -51,7 +51,7 @@ class GmailService:
             # Callback for batch processing
             def callback(request_id, response, exception):
                 if exception:
-                    logger.error(f"Error fetching message {request_id}: {exception}", exc_info=exception)
+                    logger.error(f"Error fetching message {request_id}: {exception}", exc_info=True)
                     return
                 
                 headers = response['payload']['headers']
