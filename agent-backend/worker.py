@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from .database import get_session, init_db
-from .models import EmailEvent, EmailStatus, RiskTier
+from database import get_session, init_db
+from models import EmailEvent, EmailStatus, RiskTier
 
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 BATCH_LIMIT = int(os.getenv("BATCH_LIMIT", "10"))
