@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev --prefix dashboard\" \"source .venv/bin/activate && cd dashboard-backend && python -m uvicorn main:app --reload --port 8000\" \"source .venv/bin/activate && cd agent-backend && python -m uvicorn main:app --reload --port 8001\"",
+    "dev": "concurrently \"npm run dev --prefix dashboard\" \"cd dashboard-backend && ../.venv/bin/python -m uvicorn main:app --reload --port 8000\" \"cd agent-backend && ../.venv/bin/python -m uvicorn main:app --reload --port 8001\"",
     "start": "npm run dev"
   },
   "devDependencies": {

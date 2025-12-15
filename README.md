@@ -54,3 +54,15 @@ To use Google Sign-In, you must configure your environment:
     AUTH_GOOGLE_SECRET="your-client-secret"
     AUTH_SECRET="your-secret-key"
     ```
+
+## ⚙️ Backend Configuration
+
+The backend services (`dashboard-backend` and `agent-backend`) also require configuration for Gmail API access and database connections.
+
+1.  **Dashboard Backend**: Copy `dashboard-backend/.env.example` to `dashboard-backend/.env` and fill in your Gmail API credentials and database URL.
+2.  **Agent Backend**: Copy `agent-backend/.env.example` to `agent-backend/.env` and configure accordingly.
+
+**Required Variables**:
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`: For Gmail API access.
+- `DATABASE_URL`: Connection string for the database (if used).
+- `AUTH_SECRET`: Shared secret for security.
