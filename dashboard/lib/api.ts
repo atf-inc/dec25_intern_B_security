@@ -14,8 +14,16 @@ async function request<T>(path: string, { token }: FetchOptions = {}): Promise<T
   })
 
   if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`API request failed (${res.status}): ${body}`)
+    let errorMessage = `API request failed (${res.status})`
+    if (process.env.NODE_ENV === "development") {
+      try {
+        const body = await res.text()
+        errorMessage += `: ${body}`
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+    throw new Error(errorMessage)
   }
 
   return res.json() as Promise<T>

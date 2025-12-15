@@ -50,13 +50,15 @@ def _decode_clerk_token(token: str) -> dict:
                 audience=CLERK_AUDIENCE if CLERK_AUDIENCE else None,
                 options={"verify_aud": bool(CLERK_AUDIENCE)},
             )
-        except Exception as exc:  # noqa: BLE001
+        except jwt.ExpiredSignatureError as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired") from exc
+        except jwt.InvalidTokenError as exc:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Clerk token") from exc
 
     # Fallback: decode without signature verification (development only)
     try:
         return jwt.decode(token, options={"verify_signature": False})
-    except Exception as exc:  # noqa: BLE001
+    except jwt.InvalidTokenError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
 
@@ -229,7 +231,8 @@ async def list_emails(
 
 
 def _generate_api_key() -> str:
-    return uuid.uuid4().hex
+    import secrets
+    return secrets.token_urlsafe(32)
 
 
 @app.post("/api/organizations", response_model=OrganisationRead, status_code=status.HTTP_201_CREATED)
