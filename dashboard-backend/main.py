@@ -94,7 +94,14 @@ app.add_middleware(
 
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE")
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
 _jwks_client: Optional[PyJWKClient] = PyJWKClient(CLERK_JWKS_URL) if CLERK_JWKS_URL else None
+
+if DEV_MODE:
+    logger.warning(
+        "DEV_MODE is enabled. JWT signature verification may be skipped. "
+        "DO NOT use this setting in production!"
+    )
 
 
 @app.on_event("startup")
@@ -121,7 +128,16 @@ def _decode_clerk_token(token: str) -> dict:
         except jwt.InvalidTokenError as exc:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Clerk token") from exc
 
-    # Fallback: decode without signature verification (development only)
+    # Only allow insecure fallback in DEV_MODE
+    if not DEV_MODE:
+        logger.error("CLERK_JWKS_URL is not configured and DEV_MODE is disabled. Cannot verify JWT.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication not configured. Contact administrator.",
+        )
+
+    # DEV_MODE fallback: decode without signature verification
+    logger.warning("INSECURE: Decoding JWT without signature verification (DEV_MODE)")
     try:
         return jwt.decode(token, options={"verify_signature": False})
     except jwt.InvalidTokenError as exc:
