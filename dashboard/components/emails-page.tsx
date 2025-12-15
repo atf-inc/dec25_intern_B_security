@@ -11,9 +11,20 @@ import { Search, Filter, AlertTriangle, Mail, CheckCircle2, XCircle, RefreshCw }
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
+interface Email {
+  id: string
+  subject: string
+  sender: string
+  date: string
+  snippet: string
+  status: string
+  threat: string | null
+  folder: string
+}
+
 export function EmailsPage() {
   const { data: session } = useSession()
-  const [emails, setEmails] = useState<any[]>([])
+  const [emails, setEmails] = useState<Email[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
