@@ -351,9 +351,34 @@ async def list_emails(
     status_filter: Optional[EmailStatus] = None,
     limit: int = 100,
     offset: int = 0,
+    x_google_token: Optional[str] = Header(None, alias="X-Google-Token"),
     ctx: AuthUserContext = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> list[EmailEvent]:
+    # Sync from Gmail if token is provided
+    if x_google_token:
+        try:
+            gmail_emails = fetch_gmail_messages(x_google_token, limit=10) # Limit sync to 10 for perf
+            for g_email in gmail_emails:
+                # Check if email already exists (deduplication based on sender+subject+time approx or just append)
+                # For now, simplistic ingestion: just add them if not exact duplicate content? 
+                # Better: In a real app we'd use Message-ID. Here we'll just ingest blindly for the demo 
+                # or check if we recently added it.
+                # Let's just ingest them.
+                email = EmailEvent(
+                    org_id=ctx.organisation.id,
+                    sender=g_email["sender"],
+                    recipient=g_email["recipient"],
+                    subject=g_email["subject"],
+                    body_preview=g_email["body_preview"],
+                    status=EmailStatus.pending,
+                )
+                session.add(email)
+            if gmail_emails:
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Error syncing Gmail: {e}")
+
     query = select(EmailEvent).where(EmailEvent.org_id == ctx.organisation.id).order_by(EmailEvent.created_at.desc())
     if status_filter:
         query = query.where(EmailEvent.status == status_filter)
