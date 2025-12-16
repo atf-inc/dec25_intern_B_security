@@ -26,19 +26,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async jwt({ token, account }) {
       // Persist the OAuth access_token and refresh_token to the token right after signin
       if (account) {
-        token.accessToken = account.access_token as string
-        token.refreshToken = account.refresh_token as string
-        token.idToken = account.id_token as string
+        token.accessToken = account.access_token
+        token.refreshToken = account.refresh_token
+        token.idToken = account.id_token
         token.expiresAt = account.expires_at
       }
       return token
     },
     async session({ session, token }) {
       // Send properties to the client, like an access_token and user id from a provider.
-      session.accessToken = token.accessToken as string
-      session.refreshToken = token.refreshToken as string
-      session.idToken = token.idToken as string
-      session.expiresAt = token.expiresAt as number
+      session.accessToken = token.accessToken as string | undefined
+      session.refreshToken = token.refreshToken as string | undefined
+      session.idToken = token.idToken as string | undefined
+      session.expiresAt = typeof token.expiresAt === 'number' ? token.expiresAt : undefined
       return session
     },
   },
