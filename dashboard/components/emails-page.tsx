@@ -42,12 +42,8 @@ export function EmailsPage() {
         // On frontend, we should probably await sync then fetch, or fetch then sync in bg?
         // The prompt implies we should trigger the sync.
         if (session.accessToken) {
-          try {
-            // Import syncEmails at top of file needed
-            await syncEmails(session.idToken, session.accessToken)
-          } catch (e) {
-            console.error("Sync failed", e)
-          }
+          // Fire and forget sync, don't block UI
+          syncEmails(session.idToken, session.accessToken).catch(console.error)
         }
 
         // Fetch local db emails
