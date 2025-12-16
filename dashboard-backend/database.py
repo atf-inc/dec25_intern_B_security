@@ -3,13 +3,11 @@ from collections.abc import AsyncGenerator
 
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.pool import QueuePool
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-try:
-    from .models import EmailEvent, Organisation, User  # noqa: F401 - ensure metadata import
-except ImportError:
-    from models import EmailEvent, Organisation, User  # noqa: F401 - ensure metadata import
+from models import EmailEvent, Organisation, User  # noqa: F401 - ensure metadata import
 
 load_dotenv()
 
@@ -17,16 +15,29 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set")
 
-# Pool settings only apply to PostgreSQL, not SQLite
-_engine_kwargs = {"echo": False, "future": True}
-if not DATABASE_URL.startswith("sqlite"):
-    _engine_kwargs.update({
+# Convert postgresql:// to postgresql+asyncpg:// for async driver
+# Determine pool settings based on database type
+connect_args = {}
+pool_args = {}
+
+if "postgresql" in DATABASE_URL:
+    pool_args = {
+        "poolclass": QueuePool,
         "pool_size": 5,
         "max_overflow": 10,
         "pool_pre_ping": True,
-    })
+    }
+else:
+    # SQLite / other (aiosqlite usually prefers NullPool or implicit default)
+    # Using default pool for SQLite (often NullPool or SingletonThreadPool depending on context)
+    pass
 
-engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    future=True,
+    **pool_args,
+)
 
 
 async def init_db() -> None:

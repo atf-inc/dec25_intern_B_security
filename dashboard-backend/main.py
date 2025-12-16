@@ -1,25 +1,24 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import secrets
 from dataclasses import dataclass
 from typing import Optional
 import uuid
 
-import jwt
+from google.oauth2 import id_token
+from google.auth.transport import requests
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from jwt import PyJWKClient
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-try:
-    from .database import get_session, init_db
-    from .models import EmailEvent, EmailStatus, Organisation, RiskTier, User, UserRole
-except ImportError:
-    from database import get_session, init_db
-    from models import EmailEvent, EmailStatus, Organisation, RiskTier, User, UserRole
+from database import get_session, init_db
+from models import EmailEvent, EmailStatus, Organisation, RiskTier, User, UserRole
+
+logger = logging.getLogger(__name__)
 
 
 def _hash_api_key(api_key: str) -> str:
@@ -56,10 +55,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
-CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
-CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE")
-_jwks_client: Optional[PyJWKClient] = PyJWKClient(CLERK_JWKS_URL) if CLERK_JWKS_URL else None
+GOOGLE_CLIENT_ID = os.getenv("AUTH_GOOGLE_ID")
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
+
+if DEV_MODE:
+    logger.warning(
+        "DEV_MODE is enabled. Auth verification may be skipped. "
+        "DO NOT use this setting in production!"
+    )
+elif not GOOGLE_CLIENT_ID:
+    raise RuntimeError("AUTH_GOOGLE_ID environment variable is not set. Service cannot start in production mode.")
 
 
 @app.on_event("startup")
@@ -67,35 +72,30 @@ async def on_startup() -> None:
     await init_db()
 
 
-def _decode_clerk_token(token: str) -> dict:
+def _verify_google_token(token: str) -> dict:
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
 
-    if _jwks_client:
-        try:
-            signing_key = _jwks_client.get_signing_key_from_jwt(token).key
-            return jwt.decode(
-                token,
-                signing_key,
-                algorithms=["RS256"],
-                audience=CLERK_AUDIENCE if CLERK_AUDIENCE else None,
-                options={"verify_aud": bool(CLERK_AUDIENCE)},
-            )
-        except jwt.ExpiredSignatureError as exc:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired") from exc
-        except jwt.InvalidTokenError as exc:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Clerk token") from exc
+    # DEV_MODE: Allow skipping verification (simulating test users)
+    if DEV_MODE:
+        # In dev mode, if token starts with "dev_", extract the google_id from the rest
+        if token.startswith("dev_"):
+            google_id = token[4:]  # Strip "dev_" prefix to get google_id
+            return {"sub": google_id, "email": f"{google_id}@example.com"}
+        # Fallback to trying to verify, but maybe log warning
+        logger.warning("Verifying Google token in DEV_MODE. Production checks apply.")
 
-    # Fallback: decode without signature verification (development only)
-    if not DEV_MODE:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="JWKS not configured and DEV_MODE is not enabled"
-        )
     try:
-        return jwt.decode(token, options={"verify_signature": False})
-    except jwt.InvalidTokenError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
+        # Verify the token against Google's public keys
+        # aud argument checks the Client ID
+        id_info = id_token.verify_oauth2_token(
+            token, 
+            requests.Request(), 
+            audience=GOOGLE_CLIENT_ID
+        )
+        return id_info
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token") from exc
 
 
 def _extract_bearer_token(authorization: str | None) -> str:
@@ -115,12 +115,12 @@ async def get_current_user(
     session: AsyncSession = Depends(get_session),
 ) -> AuthUserContext:
     token = _extract_bearer_token(authorization)
-    payload = _decode_clerk_token(token)
-    clerk_id: str | None = payload.get("sub")
-    if not clerk_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Clerk token missing subject")
+    payload = _verify_google_token(token)
+    google_id: str | None = payload.get("sub")
+    if not google_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google token missing subject")
 
-    result = await session.exec(select(User).where(User.clerk_id == clerk_id))
+    result = await session.exec(select(User).where(User.google_id == google_id))
     user = result.first()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
@@ -222,7 +222,7 @@ class OrganisationCreateResponse(SQLModel):
 
 class UserCreate(SQLModel):
     email: str
-    clerk_id: str
+    google_id: str
     role: UserRole = UserRole.member
     org_id: Optional[uuid.UUID] = None
 
@@ -230,7 +230,7 @@ class UserCreate(SQLModel):
 class UserRead(SQLModel):
     id: uuid.UUID
     email: str
-    clerk_id: str
+    google_id: str
     role: UserRole
     org_id: uuid.UUID
 
@@ -328,7 +328,7 @@ async def create_user(
     org_id = payload.org_id or ctx.organisation.id
     user = User(
         email=payload.email,
-        clerk_id=payload.clerk_id,
+        google_id=payload.google_id,
         role=payload.role,
         org_id=org_id,
     )

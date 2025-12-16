@@ -8,7 +8,7 @@ from tests.conftest import create_mock_jwt
 @pytest.mark.asyncio
 async def test_create_organization_as_admin(test_client: AsyncClient, test_admin_user: dict):
     """POST /api/organizations succeeds for admin user."""
-    token = create_mock_jwt(test_admin_user["clerk_id"])
+    token = create_mock_jwt(test_admin_user["google_id"])
     payload = {
         "name": "New Test Org",
         "domain": "neworg.com",
@@ -31,7 +31,7 @@ async def test_create_organization_as_admin(test_client: AsyncClient, test_admin
 @pytest.mark.asyncio
 async def test_create_organization_as_member_forbidden(test_client: AsyncClient, test_member_user: dict):
     """POST /api/organizations returns 403 for non-admin user."""
-    token = create_mock_jwt(test_member_user["clerk_id"])
+    token = create_mock_jwt(test_member_user["google_id"])
     payload = {
         "name": "New Test Org",
         "domain": "neworg.com",
@@ -47,7 +47,7 @@ async def test_create_organization_as_member_forbidden(test_client: AsyncClient,
 @pytest.mark.asyncio
 async def test_list_organizations_as_admin(test_client: AsyncClient, test_admin_user: dict, test_org: dict):
     """GET /api/organizations returns list for admin user."""
-    token = create_mock_jwt(test_admin_user["clerk_id"])
+    token = create_mock_jwt(test_admin_user["google_id"])
     response = await test_client.get(
         "/api/organizations",
         headers={"Authorization": f"Bearer {token}"},
@@ -63,7 +63,7 @@ async def test_list_organizations_as_admin(test_client: AsyncClient, test_admin_
 @pytest.mark.asyncio
 async def test_list_organizations_as_member_forbidden(test_client: AsyncClient, test_member_user: dict):
     """GET /api/organizations returns 403 for non-admin user."""
-    token = create_mock_jwt(test_member_user["clerk_id"])
+    token = create_mock_jwt(test_member_user["google_id"])
     response = await test_client.get(
         "/api/organizations",
         headers={"Authorization": f"Bearer {token}"},

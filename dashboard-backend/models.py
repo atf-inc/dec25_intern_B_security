@@ -42,7 +42,7 @@ class User(SQLModel, table=True):
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     org_id: uuid.UUID = Field(foreign_key="organisations.id", index=True)
-    clerk_id: str = Field(index=True)
+    google_id: str = Field(index=True)
     email: str = Field(index=True)
     role: UserRole = Field(sa_column=Column(Enum(UserRole, name="user_role_enum")))
 

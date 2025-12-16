@@ -95,7 +95,7 @@ async def test_admin_user(test_session: AsyncSession, test_org: dict) -> dict:
     user = User(
         id=uuid.uuid4(),
         org_id=test_org["id"],
-        clerk_id="clerk_admin_123",
+        google_id="google_admin_123",
         email="admin@test.com",
         role=UserRole.admin,
     )
@@ -106,7 +106,7 @@ async def test_admin_user(test_session: AsyncSession, test_org: dict) -> dict:
     return {
         "id": user.id,
         "org_id": user.org_id,
-        "clerk_id": user.clerk_id,
+        "google_id": user.google_id,
         "email": user.email,
         "role": user.role,
     }
@@ -118,7 +118,7 @@ async def test_member_user(test_session: AsyncSession, test_org: dict) -> dict:
     user = User(
         id=uuid.uuid4(),
         org_id=test_org["id"],
-        clerk_id="clerk_member_456",
+        google_id="google_member_456",
         email="member@test.com",
         role=UserRole.member,
     )
@@ -129,22 +129,24 @@ async def test_member_user(test_session: AsyncSession, test_org: dict) -> dict:
     return {
         "id": user.id,
         "org_id": user.org_id,
-        "clerk_id": user.clerk_id,
+        "google_id": user.google_id,
         "email": user.email,
         "role": user.role,
     }
 
 
-def create_mock_jwt(clerk_id: str) -> str:
-    """Create a mock JWT token for testing."""
-    payload = {"sub": clerk_id}
-    # Using a simple secret for tests - no signature verification in dev mode
-    return jwt.encode(payload, "test-secret", algorithm="HS256")
+def create_mock_jwt(google_id: str) -> str:
+    """Create a mock token for testing in dev mode.
+    
+    In dev mode, tokens starting with "dev_" are accepted without verification.
+    The google_id is extracted from after the "dev_" prefix.
+    """
+    return f"dev_{google_id}"
 
 
 def auth_header_for_user(user: dict) -> dict[str, str]:
     """Generate Authorization header for a user dict."""
-    token = create_mock_jwt(user["clerk_id"])
+    token = create_mock_jwt(user["google_id"])
     return {"Authorization": f"Bearer {token}"}
 
 

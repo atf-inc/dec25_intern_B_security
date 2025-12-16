@@ -38,36 +38,26 @@ class TestExtractBearerToken:
         assert exc_info.value.status_code == 401
 
 
-class TestDecodeClerkToken:
-    """Tests for _decode_clerk_token function."""
+class TestVerifyGoogleToken:
+    """Tests for _verify_google_token function."""
 
-    def test_decode_clerk_token_missing(self):
+    def test_verify_google_token_missing(self):
         """Raises 401 when token is empty."""
-        from main import _decode_clerk_token
+        from main import _verify_google_token
 
         with pytest.raises(HTTPException) as exc_info:
-            _decode_clerk_token("")
+            _verify_google_token("")
         assert exc_info.value.status_code == 401
         assert "missing" in exc_info.value.detail.lower()
 
-    def test_decode_clerk_token_invalid(self):
-        """Raises 401 for invalid JWT format."""
-        from main import _decode_clerk_token
+    def test_verify_google_token_dev_mode(self):
+        """Returns payload with google_id from dev_ prefixed token in dev mode."""
+        from main import _verify_google_token
 
-        with pytest.raises(HTTPException) as exc_info:
-            _decode_clerk_token("not-a-valid-jwt")
-        assert exc_info.value.status_code == 401
-
-    def test_decode_clerk_token_valid_unsigned(self):
-        """Decodes valid unsigned JWT in dev mode (no JWKS configured)."""
-        import jwt
-        from main import _decode_clerk_token
-
-        # Create a simple JWT with sub claim
-        token = jwt.encode({"sub": "user_123"}, "secret", algorithm="HS256")
-        # In dev mode (no JWKS), it decodes without verification
-        payload = _decode_clerk_token(token)
-        assert payload["sub"] == "user_123"
+        # In dev mode with dev_ prefix, extracts google_id from token
+        payload = _verify_google_token("dev_test_user_123")
+        assert payload["sub"] == "test_user_123"
+        assert payload["email"] == "test_user_123@example.com"
 
 
 class TestVerifyApiKey:
@@ -124,7 +114,7 @@ class TestRequireAdmin:
         """Allows admin user through."""
         from tests.conftest import create_mock_jwt
 
-        token = create_mock_jwt(test_admin_user["clerk_id"])
+        token = create_mock_jwt(test_admin_user["google_id"])
         response = await test_client.get(
             "/api/organizations",
             headers={"Authorization": f"Bearer {token}"},
@@ -136,7 +126,7 @@ class TestRequireAdmin:
         """Raises 403 for non-admin users."""
         from tests.conftest import create_mock_jwt
 
-        token = create_mock_jwt(test_member_user["clerk_id"])
+        token = create_mock_jwt(test_member_user["google_id"])
         response = await test_client.get(
             "/api/organizations",
             headers={"Authorization": f"Bearer {token}"},
@@ -166,7 +156,7 @@ class TestResolveIngestContext:
         """Resolves organisation from Bearer token."""
         from tests.conftest import create_mock_jwt
 
-        token = create_mock_jwt(test_admin_user["clerk_id"])
+        token = create_mock_jwt(test_admin_user["google_id"])
         response = await test_client.post(
             "/api/emails",
             json={

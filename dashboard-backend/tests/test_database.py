@@ -74,7 +74,7 @@ async def test_user_crud(test_session: AsyncSession, test_org: dict):
     user = User(
         id=uuid.uuid4(),
         org_id=test_org["id"],
-        clerk_id="clerk_crud_test",
+        google_id="google_crud_test",
         email="crud@test.com",
         role=UserRole.member,
     )
@@ -83,7 +83,7 @@ async def test_user_crud(test_session: AsyncSession, test_org: dict):
 
     # Read back
     result = await test_session.exec(
-        select(User).where(User.clerk_id == "clerk_crud_test")
+        select(User).where(User.google_id == "google_crud_test")
     )
     fetched = result.first()
     assert fetched is not None

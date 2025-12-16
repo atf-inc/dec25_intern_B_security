@@ -35,7 +35,7 @@ async def test_ingest_email_with_bearer_token(test_client: AsyncClient, test_adm
         "recipient": "recipient@test.com",
         "subject": "Test Email via Bearer",
     }
-    token = create_mock_jwt(test_admin_user["clerk_id"])
+    token = create_mock_jwt(test_admin_user["google_id"])
     response = await test_client.post(
         "/api/emails",
         json=payload,
@@ -62,7 +62,7 @@ async def test_ingest_email_missing_auth(test_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_list_emails_empty(test_client: AsyncClient, test_admin_user: dict):
     """GET /api/emails returns empty list when no emails exist."""
-    token = create_mock_jwt(test_admin_user["clerk_id"])
+    token = create_mock_jwt(test_admin_user["google_id"])
     response = await test_client.get(
         "/api/emails",
         headers={"Authorization": f"Bearer {token}"},
@@ -88,7 +88,7 @@ async def test_list_emails_returns_created(test_client: AsyncClient, test_org: d
     assert create_response.status_code == 201
 
     # List emails
-    token = create_mock_jwt(test_admin_user["clerk_id"])
+    token = create_mock_jwt(test_admin_user["google_id"])
     response = await test_client.get(
         "/api/emails",
         headers={"Authorization": f"Bearer {token}"},
