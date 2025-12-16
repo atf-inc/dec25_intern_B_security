@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -18,9 +19,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from pydantic import BaseModel, field_validator
 
 from gmail_service import GmailService
-from .database import get_session, init_db
-from .models import EmailEvent, EmailStatus, Organisation, RiskTier, User
-from .models import UserRole  # noqa: F401 (used in Enum creation)
+from database import get_session, init_db
+from models import EmailEvent, EmailStatus, Organisation, RiskTier, User
+from models import UserRole  # noqa: F401 (used in Enum creation)
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,10 @@ class FetchEmailsRequest(BaseModel):
 @app.on_event("startup")
 async def on_startup() -> None:
     await init_db()
+
+@app.get("/")
+def read_root():
+    return {"message": "Hello from dashboard-backend!"}
 
 
 def _decode_clerk_token(token: str) -> dict:
@@ -301,11 +306,15 @@ async def health() -> dict:
 
 
 @app.post("/api/v1/emails/fetch")
-def fetch_emails_from_gmail(request: FetchEmailsRequest):
+async def fetch_emails_from_gmail(
+    request: FetchEmailsRequest,
+    ctx: AuthUserContext = Depends(get_current_user),
+):
     # Validation handled by Pydantic
     try:
         gmail = GmailService(request.access_token)
-        emails = gmail.fetch_recent_emails()
+        # Run blocking call in thread pool to avoid blocking event loop
+        emails = await asyncio.to_thread(gmail.fetch_recent_emails)
         
         return {"status": "success", "count": len(emails), "emails": emails}
     except Exception as e:
