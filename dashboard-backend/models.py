@@ -60,6 +60,7 @@ class EmailEvent(SQLModel, table=True):
     sender: str
     recipient: str
     subject: str
+    message_id: Optional[str] = Field(default=None, index=True)
     body_preview: Optional[str] = None
     status: EmailStatus = Field(
         default=EmailStatus.pending,

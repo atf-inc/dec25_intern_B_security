@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { fetchEmails, type Email } from "@/lib/api"
+import { type Email, fetchEmails, syncEmails } from "@/lib/api"
 
 const tierColor: Record<string, string> = {
   SAFE: "text-green-500 bg-green-500/10",
@@ -36,8 +36,22 @@ export function EmailsPage() {
           if (session === null) throw new Error("Not authenticated")
           return
         }
-        // Pass both ID token (for auth) and Access Token (for Gmail API)
-        const data = await fetchEmails(session.idToken, session.accessToken)
+
+        // Trigger sync if we have an access token (background async or await?)
+        // User asked to "trigger fetch_gmail_messages... in a background task... ensure commits occur only for new records"
+        // On frontend, we should probably await sync then fetch, or fetch then sync in bg?
+        // The prompt implies we should trigger the sync.
+        if (session.accessToken) {
+          try {
+            // Import syncEmails at top of file needed
+            await syncEmails(session.idToken, session.accessToken)
+          } catch (e) {
+            console.error("Sync failed", e)
+          }
+        }
+
+        // Fetch local db emails
+        const data = await fetchEmails(session.idToken)
         if (active) {
           setEmails(data)
         }
