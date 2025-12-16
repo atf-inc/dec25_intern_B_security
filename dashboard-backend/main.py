@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import hashlib
-import logging
 import os
-import secrets
-import sys
 from dataclasses import dataclass
 from typing import Optional
 import uuid
@@ -16,77 +12,20 @@ from jwt import PyJWKClient
 from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from .database import get_session, init_db
-from .models import EmailEvent, EmailStatus, Organisation, RiskTier, User
-from .models import UserRole  # noqa: F401 (used in Enum creation)
-
-logger = logging.getLogger(__name__)
-
-
-def _hash_api_key(api_key: str) -> str:
-    """Hash an API key using SHA-256 for secure storage."""
-    return hashlib.sha256(api_key.encode()).hexdigest()
-
-
-def _generate_api_key() -> tuple[str, str, str]:
-    """Generate an API key and return (plaintext_key, hashed_key, prefix).
-    
-    The plaintext key is shown to the user once. Only the hash is stored.
-    """
-    plaintext_key = f"pg_{secrets.token_urlsafe(32)}"
-    prefix = plaintext_key[:8]  # "pg_" + first 5 chars of token
-    hashed_key = _hash_api_key(plaintext_key)
-    return plaintext_key, hashed_key, prefix
-
-
-def _verify_api_key_hash(plaintext_key: str, stored_hash: str) -> bool:
-    """Verify an API key against its stored hash."""
-    return secrets.compare_digest(_hash_api_key(plaintext_key), stored_hash)
-
-
-def _validate_cors_config() -> list[str]:
-    """Validate CORS configuration and return parsed origins list.
-    
-    Fails fast if credentials are enabled with wildcard origins (insecure).
-    """
-    cors_origins_raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
-    allow_credentials = True  # We always use credentials for auth
-    
-    if not cors_origins_raw:
-        logger.error(
-            "CORS_ALLOW_ORIGINS environment variable is not set. "
-            "Please set it to a comma-separated list of allowed origins."
-        )
-        sys.exit(1)
-    
-    # Parse comma-separated origins, trim whitespace
-    origins = [origin.strip() for origin in cors_origins_raw.split(",") if origin.strip()]
-    
-    if not origins:
-        logger.error("CORS_ALLOW_ORIGINS is empty after parsing.")
-        sys.exit(1)
-    
-    # Check for wildcard with credentials - this is invalid per CORS spec
-    if "*" in origins and allow_credentials:
-        logger.error(
-            "SECURITY ERROR: CORS_ALLOW_ORIGINS='*' with allow_credentials=True is invalid. "
-            "Browsers will reject this configuration. "
-            "Please specify explicit origins (e.g., 'http://localhost:3000,https://app.example.com')."
-        )
-        sys.exit(1)
-    
-    logger.info(f"CORS configured for origins: {origins}")
-    return origins
-
-
-# Validate CORS configuration before app creation
-_cors_origins = _validate_cors_config()
+try:
+    from .database import get_session, init_db
+    from .models import EmailEvent, EmailStatus, Organisation, RiskTier, User
+    from .models import UserRole  # noqa: F401 (used in Enum creation)
+except ImportError:
+    from database import get_session, init_db
+    from models import EmailEvent, EmailStatus, Organisation, RiskTier, User
+    from models import UserRole  # noqa: F401 (used in Enum creation)
 
 app = FastAPI(title="PhishGuard Dashboard API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=os.getenv("CORS_ALLOW_ORIGINS", "*").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -94,14 +33,7 @@ app.add_middleware(
 
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
 CLERK_AUDIENCE = os.getenv("CLERK_AUDIENCE")
-DEV_MODE = os.getenv("DEV_MODE", "false").lower() in ("true", "1", "yes")
 _jwks_client: Optional[PyJWKClient] = PyJWKClient(CLERK_JWKS_URL) if CLERK_JWKS_URL else None
-
-if DEV_MODE:
-    logger.warning(
-        "DEV_MODE is enabled. JWT signature verification may be skipped. "
-        "DO NOT use this setting in production!"
-    )
 
 
 @app.on_event("startup")
@@ -123,24 +55,13 @@ def _decode_clerk_token(token: str) -> dict:
                 audience=CLERK_AUDIENCE if CLERK_AUDIENCE else None,
                 options={"verify_aud": bool(CLERK_AUDIENCE)},
             )
-        except jwt.ExpiredSignatureError as exc:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired") from exc
-        except jwt.InvalidTokenError as exc:
+        except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Clerk token") from exc
 
-    # Only allow insecure fallback in DEV_MODE
-    if not DEV_MODE:
-        logger.error("CLERK_JWKS_URL is not configured and DEV_MODE is disabled. Cannot verify JWT.")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication not configured. Contact administrator.",
-        )
-
-    # DEV_MODE fallback: decode without signature verification
-    logger.warning("INSECURE: Decoding JWT without signature verification (DEV_MODE)")
+    # Fallback: decode without signature verification (development only)
     try:
         return jwt.decode(token, options={"verify_signature": False})
-    except jwt.InvalidTokenError as exc:
+    except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
 
@@ -185,16 +106,13 @@ async def require_admin(ctx: AuthUserContext = Depends(get_current_user)) -> Aut
 
 
 async def verify_api_key(
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_api_key: str | None = Header(default=None, convert_underscores=False),
     session: AsyncSession = Depends(get_session),
 ) -> Organisation:
-    """Verify API key by hashing and comparing against stored hash."""
     if not x_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-API-Key")
 
-    # Hash the provided key and look up by hash
-    key_hash = _hash_api_key(x_api_key)
-    result = await session.exec(select(Organisation).where(Organisation.api_key_hash == key_hash))
+    result = await session.exec(select(Organisation).where(Organisation.api_key == x_api_key))
     org = result.first()
     if not org:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
@@ -210,9 +128,7 @@ async def resolve_ingest_context(
     authorization = request.headers.get("authorization")
 
     if api_key:
-        # Hash the provided key and look up by hash
-        key_hash = _hash_api_key(api_key)
-        result = await session.exec(select(Organisation).where(Organisation.api_key_hash == key_hash))
+        result = await session.exec(select(Organisation).where(Organisation.api_key == api_key))
         org = result.first()
         if not org:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
@@ -233,7 +149,7 @@ class EmailCreate(SQLModel):
 
 
 class EmailRead(SQLModel):
-    id: uuid.UUID
+    id: str
     sender: str
     recipient: str
     subject: str
@@ -250,20 +166,10 @@ class OrganisationCreate(SQLModel):
 
 
 class OrganisationRead(SQLModel):
-    """Organisation data for listing (api_key is never exposed after creation)."""
     id: uuid.UUID
     name: str
     domain: str
-    api_key_prefix: str  # Only show prefix for identification
-
-
-class OrganisationCreateResponse(SQLModel):
-    """Response when creating an organisation. Contains the plaintext API key (shown once only)."""
-    id: uuid.UUID
-    name: str
-    domain: str
-    api_key: str  # Plaintext key - only shown once at creation time
-    api_key_prefix: str
+    api_key: str
 
 
 class UserCreate(SQLModel):
@@ -327,33 +233,21 @@ async def list_emails(
     return result.all()
 
 
-@app.post("/api/organizations", response_model=OrganisationCreateResponse, status_code=status.HTTP_201_CREATED)
+def _generate_api_key() -> str:
+    return uuid.uuid4().hex
+
+
+@app.post("/api/organizations", response_model=OrganisationRead, status_code=status.HTTP_201_CREATED)
 async def create_organization(
     payload: OrganisationCreate,
     ctx: AuthUserContext = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
-) -> OrganisationCreateResponse:
-    # Generate API key - plaintext shown once, only hash stored
-    plaintext_key, hashed_key, prefix = _generate_api_key()
-    
-    org = Organisation(
-        name=payload.name,
-        domain=payload.domain,
-        api_key_hash=hashed_key,
-        api_key_prefix=prefix,
-    )
+) -> Organisation:
+    org = Organisation(name=payload.name, domain=payload.domain, api_key=_generate_api_key())
     session.add(org)
     await session.commit()
     await session.refresh(org)
-    
-    # Return response with plaintext key (only time it's visible)
-    return OrganisationCreateResponse(
-        id=org.id,
-        name=org.name,
-        domain=org.domain,
-        api_key=plaintext_key,
-        api_key_prefix=prefix,
-    )
+    return org
 
 
 @app.get("/api/organizations", response_model=list[OrganisationRead])
