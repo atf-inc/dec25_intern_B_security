@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { fetchEmails, type Email } from "@/lib/api"
+import { fetchGmailEmails, type Email } from "@/lib/api"
 
 const tierColor: Record<string, string> = {
   SAFE: "text-green-500 bg-green-500/10",
@@ -34,7 +34,7 @@ export function EmailsPage() {
       if (!token) {
         throw new Error("Not authenticated")
       }
-      const data = await fetchEmails(token)
+      const data = await fetchGmailEmails(token)
       setEmails(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch emails")

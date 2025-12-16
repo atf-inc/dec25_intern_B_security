@@ -2,15 +2,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 type FetchOptions = {
   token?: string
-}
+} & RequestInit
 
-async function request<T>(path: string, { token }: FetchOptions = {}): Promise<T> {
+async function request<T>(path: string, { token, ...options }: FetchOptions = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
     },
-    cache: "no-store",
+    cache: options.cache || "no-store",
   })
 
   if (!res.ok) {
@@ -45,18 +47,11 @@ export async function fetchEmails(token: string): Promise<Email[]> {
   return request<Email[]>("/api/emails", { token })
 }
 
-export async function fetchGmailEmails(accessToken: string) {
-  const response = await fetch(`${API_URL}/api/v1/emails/fetch`, {
+export async function fetchGmailEmails(accessToken: string): Promise<Email[]> {
+  const response = await request<{ emails: Email[] }>("/api/v1/emails/fetch", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ access_token: accessToken }),
+    token: accessToken, // Sending for Backend Auth (Clerk)
+    body: JSON.stringify({ access_token: accessToken }), // Sending for Gmail Service
   })
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch emails")
-  }
-
-  return response.json()
+  return response.emails || []
 }
