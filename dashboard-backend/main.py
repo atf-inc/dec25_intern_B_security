@@ -34,7 +34,7 @@ def _generate_api_key() -> tuple[str, str, str]:
     The plaintext key is shown to the user once. Only the hash is stored.
     """
     plaintext_key = f"sk_{secrets.token_urlsafe(32)}"
-    prefix = plaintext_key[:8]  # "sk_" + first 5 chars of token
+    prefix = plaintext_key[:8]  # First 8 chars of plaintext_key (e.g., "sk_XXXXX")
     hashed_key = _hash_api_key(plaintext_key)
     return plaintext_key, hashed_key, prefix
 
