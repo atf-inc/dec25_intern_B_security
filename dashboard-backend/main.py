@@ -10,7 +10,9 @@ from typing import Optional
 import uuid
 
 from google.oauth2 import id_token
+from google.oauth2.credentials import Credentials
 from google.auth.transport import requests
+from googleapiclient.discovery import build
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import SQLModel, select 
@@ -135,10 +137,7 @@ def _verify_google_token(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google token") from exc
 
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
 
-# ... (existing imports)
 
 def _extract_bearer_token(authorization: str | None) -> str:
     if not authorization or not authorization.lower().startswith("bearer "):
