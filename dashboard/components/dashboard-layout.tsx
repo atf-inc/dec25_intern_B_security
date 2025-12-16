@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { Shield, Users, Mail, Settings, LayoutDashboard, Bell, ChevronDown } from "lucide-react"
-import { useUser, useClerk } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -18,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { useSession, signOut } from "next-auth/react"
 
 const navigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
@@ -28,8 +28,8 @@ const navigation = [
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const { user } = useUser()
-  const { signOut } = useClerk()
+  const { data: session } = useSession()
+  const user = session?.user
 
   return (
     <div className="flex h-screen bg-background">
@@ -114,12 +114,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user?.imageUrl || "/placeholder.svg"} />
+                    <AvatarImage src={user?.image || "/placeholder.svg"} />
                     <AvatarFallback>
-                      {user?.firstName?.substring(0, 2).toUpperCase() || "U"}
+                      {user?.name?.substring(0, 2).toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="text-sm">{user?.firstName ? `${user.firstName}${user.lastName ? ` ${user.lastName}` : ""}` : "User"}</span>
+                  <span className="text-sm">{user?.name || "User"}</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -129,7 +129,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 <DropdownMenuItem>Profile Settings</DropdownMenuItem>
                 <DropdownMenuItem>Preferences</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={async () => { await signOut({ redirectUrl: "/sign-in" }) }}>Log out</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
