@@ -17,7 +17,16 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set")
 
-engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+# Pool settings only apply to PostgreSQL, not SQLite
+_engine_kwargs = {"echo": False, "future": True}
+if not DATABASE_URL.startswith("sqlite"):
+    _engine_kwargs.update({
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_pre_ping": True,
+    })
+
+engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
 
 
 async def init_db() -> None:
