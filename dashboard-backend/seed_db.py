@@ -48,7 +48,7 @@ async def seed():
             await session.commit()
             await session.refresh(org)
             print(f"Created Organisation: {org.name} (id: {org.id})")
-            print(f"API Key (save this, shown once only): {plaintext_key}")
+            # API Key is generated for the organisation. Do not log sensitive keys.
 
         # Check if dev user exists
         result = await session.exec(select(User).where(User.google_id == "dev-user-123"))
