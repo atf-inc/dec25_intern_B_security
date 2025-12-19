@@ -11,10 +11,11 @@ from pythonjsonlogger import jsonlogger
 import google.auth
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+import socket
 
 # --- Configuration ---
 # In production, these would be loaded from Secret Manager or Env Vars
-DECISION_AGENT_URL = os.getenv("DECISION_AGENT_URL", "http://localhost:9000") # Default for local testing
+DECISION_AGENT_URL = os.getenv("DECISION_AGENT_URL") # Don't set default here to test startup validation
 PORT = int(os.getenv("PORT", "8080"))
 
 # --- Logging Setup ---
@@ -30,6 +31,24 @@ logger.setLevel(logging.INFO)
 
 # --- FastAPI App ---
 app = FastAPI(title="Email Ingest Agent")
+
+@app.on_event("startup")
+async def startup_event():
+    """Fail fast on critical configuration errors."""
+    logger.info("Starting Email Ingest Agent...")
+    
+    # 1. Critical Config Check
+    if not DECISION_AGENT_URL:
+        logger.critical("DECISION_AGENT_URL environment variable is not set. Exiting.")
+        raise RuntimeError("DECISION_AGENT_URL environment variable is not set.")
+        
+    # 2. Auth Check (Soft fail)
+    try:
+        get_gmail_service()
+        logger.info("Gmail Service initialized successfully (ADC found).")
+    except Exception as e:
+        logger.warning(f"Could not initialize Gmail Service on startup (Auth might be missing?): {e}")
+        # We allow startup because IAM might propagate later or this is a dev env.
 
 # --- Models ---
 class PubSubMessage(BaseModel):
@@ -66,7 +85,12 @@ def decode_pubsub_data(data_base64: str) -> Dict[str, Any]:
         raise ValueError(f"Invalid Pub/Sub data: {e}")
 
 def get_gmail_service():
-    """Builds and returns the Gmail API service using ADC."""
+    """
+    Builds and returns the Gmail API service using ADC.
+    Sets default timeout to avoid hanging connections.
+    """
+    # Enforce default socket timeout (global for this process, simple but effective)
+    socket.setdefaulttimeout(10) # 10 seconds for Gmail API interactions
     creds, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/gmail.readonly'])
     return build('gmail', 'v1', credentials=creds)
 
@@ -197,21 +221,27 @@ def process_gmail_event(email_address: str, history_id: int) -> List[StructuredE
 
     return payloads
 
-def forward_to_decision_agent(payload: StructuredEmailPayload):
+def forward_to_decision_agent(payload: StructuredEmailPayload, trace_context: Optional[str] = None):
     """
     Forwards the structured payload to the Decision Agent.
     """
+    headers = {}
+    if trace_context:
+        headers["X-Cloud-Trace-Context"] = trace_context
+
     try:
-        logger.info("Forwarding payload to Decision Agent", extra={"url": DECISION_AGENT_URL, "message_id": payload.message_id})
+        logger.info("Forwarding payload to Decision Agent", extra={"url": DECISION_AGENT_URL, "message_id": payload.message_id, "trace_context": trace_context})
         response = requests.post(
             DECISION_AGENT_URL,
             json=payload.model_dump(),
+            headers=headers,
             timeout=5 
         )
         response.raise_for_status()
-        logger.info("Successfully forwarded to Decision Agent", extra={"status_code": response.status_code})
+        logger.info("Successfully forwarded to Decision Agent", extra={"status_code": response.status_code, "trace_context": trace_context})
     except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to forward msg {payload.message_id}: {e}", extra={"error": str(e)})
+        logger.error(f"Failed to forward msg {payload.message_id}: {e}", extra={"error": str(e), "trace_context": trace_context})
+        raise # Raise so caller knows this specific one failed (for metrics) but caller handles try/except
 
 
 # --- Endpoints ---
@@ -222,13 +252,20 @@ async def health_check():
     return {"status": "ok"}
 
 @app.post("/")
-async def receive_pubsub_push(body: PubSubBody):
+async def receive_pubsub_push(body: PubSubBody, request: Request):
     """
     Handle incoming Pub/Sub push messages.
     """
+    # 0. Trace Context
+    trace_context = request.headers.get("X-Cloud-Trace-Context")
+    
+    # Bind logger with trace context for this request scope logic
+    # (Using local extra= param is simpler for now than context vars, effectively done below)
+    req_logger_extra = {"trace_context": trace_context, "messageId": body.message.messageId}
+
     try:
         # 1. Log receipt
-        logger.info("Received Pub/Sub message", extra={"messageId": body.message.messageId})
+        logger.info("Received Pub/Sub message", extra=req_logger_extra)
 
         # 2. Decode the inner data
         decoded_data = decode_pubsub_data(body.message.data)
@@ -237,22 +274,29 @@ async def receive_pubsub_push(body: PubSubBody):
         history_id = decoded_data.get("historyId")
 
         if not history_id:
-            logger.warning("No historyId found in message", extra={"data": decoded_data})
+            logger.warning("No historyId found in message", extra={"data": decoded_data, "trace_context": trace_context})
             return {"status": "acked", "reason": "missing_history_id"}
 
         # 3. Process Gmail Event (Real API)
         # Note: This might return empty list, one, or multiple payloads.
         structured_payloads = process_gmail_event(email_address, history_id)
 
-        # 4. Forward Each
+        # 4. Forward Each With Error Isolation
+        results = []
         for payload in structured_payloads:
-            forward_to_decision_agent(payload)
+            try:
+                forward_to_decision_agent(payload, trace_context=trace_context)
+                results.append({"msg_id": payload.message_id, "status": "success"})
+            except Exception:
+                # Log error but CONTINUE the loop
+                logger.error(f"Failed to process/forward message {payload.message_id}", exc_info=True, extra=req_logger_extra)
+                results.append({"msg_id": payload.message_id, "status": "failed"})
 
-        # 5. ACK
-        return {"status": "success"}
+        # 5. ACK (Always return 200 unless critical system failure)
+        return {"status": "success", "results": results}
 
     except Exception as e:
-        logger.exception("Unexpected error processing message")
+        logger.exception("Unexpected error processing message", extra=req_logger_extra)
         # Return 200 to ACK Pub/Sub to prevent retry of bad message (unless it's a transient server error we want to retry? 
         # For this exercise, we prioritize system stability -> ACK)
         return {"status": "error_handled"}

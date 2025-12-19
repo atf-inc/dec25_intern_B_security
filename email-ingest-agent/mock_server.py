@@ -7,6 +7,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
         print("\n[MOCK DOWNSTREAM] Received POST request:")
+        print(f"Headers: {self.headers}")
         try:
             print(json.dumps(json.loads(post_data), indent=2))
         except:
