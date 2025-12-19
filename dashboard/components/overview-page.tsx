@@ -156,7 +156,7 @@ export function OverviewPage() {
       <Card className="border-border">
         <CardHeader>
           <CardTitle className="text-foreground">Recent Email Activity</CardTitle>
-          <CardDescription>Latest emails scanned by MailShield AI</CardDescription>
+          <CardDescription>Latest emails scanned by MailShieldAI</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">

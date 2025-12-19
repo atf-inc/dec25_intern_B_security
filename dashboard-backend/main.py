@@ -85,7 +85,7 @@ def _validate_cors_config() -> list[str]:
 # Validate CORS configuration before app creation
 _cors_origins = _validate_cors_config()
 
-app = FastAPI(title="PhishGuard Dashboard API", version="0.1.0")
+app = FastAPI(title="MailShieldAI Dashboard API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -215,10 +215,34 @@ async def get_current_user(
 
     result = await session.exec(select(User).where(User.google_id == google_id))
     user = result.first()
+    
     if not user:
+        # Auto-provision new users on first login
         email = payload.get("email", "unknown")
-        print(f"\n=== USER NOT FOUND ===\nGoogle ID: {google_id}\nEmail: {email}\n======================\n")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        logger.info(f"Auto-provisioning new user: {email} (Google ID: {google_id})")
+        
+        # Get the default organisation (first one in the database)
+        org_result = await session.exec(select(Organisation).limit(1))
+        default_org = org_result.first()
+        
+        if not default_org:
+            logger.error("No organisation exists. Run seed_db.py first.")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+                detail="No organisation configured. Please contact an administrator."
+            )
+        
+        # Create the new user with 'member' role by default
+        user = User(
+            org_id=default_org.id,
+            google_id=google_id,
+            email=email,
+            role=UserRole.member,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        logger.info(f"Created new user: {email} (id: {user.id}, role: {user.role.value})")
 
     org = await session.get(Organisation, user.org_id)
     if not org:

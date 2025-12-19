@@ -1,6 +1,6 @@
 # Local Development Setup Guide
 
-This guide will help you run the PhishGuard project locally. The project consists of a FastAPI backend and a Next.js frontend.
+This guide will help you run the MailShieldAI project locally. The project consists of a FastAPI backend and a Next.js frontend.
 
 ## Prerequisites
 
