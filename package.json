@@ -1,0 +1,17 @@
+{
+  "name": "mail-shield-ai",
+  "version": "1.0.0",
+  "description": "Root package to run MailShield AI backend and frontend concurrently",
+  "scripts": {
+    "sync:env": "cp .env dashboard-backend/.env && cp .env dashboard/.env.local",
+    "dev": "npm run sync:env && concurrently -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd dashboard-backend && ./.venv/bin/python -m fastapi dev main.py",
+    "dev:frontend": "cd dashboard && pnpm dev",
+    "seed": "cd dashboard-backend && ./.venv/bin/python seed_db.py",
+    "install:all": "npm install && cd dashboard && pnpm install && cd ../dashboard-backend && ./.venv/bin/pip install -r requirements.txt"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "packageManager": "pnpm@9.1.0"
+}
