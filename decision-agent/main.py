@@ -12,10 +12,14 @@ import google.auth
 from googleapiclient.discovery import build
 import base64
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Configuration ---
 FINAL_AGENT_URL = os.getenv("FINAL_AGENT_URL", "http://localhost:9001")
 HA_API_KEY = os.getenv("HYBRID_ANALYSIS_API_KEY") # Required for Phase 2B
+USE_REAL_SANDBOX = os.getenv("USE_REAL_SANDBOX", "true").lower() == "true"
 HA_API_URL = "https://www.hybrid-analysis.com/api/v2"
 PORT = int(os.getenv("PORT", "8080"))
 
@@ -322,7 +326,7 @@ async def process_analysis(payload: StructuredEmailPayload):
     
     if should_sandbox:
         try:
-            if HA_API_KEY:
+            if HA_API_KEY and USE_REAL_SANDBOX:
                 provider = "hybrid-analysis"
                 sandbox_res = await hybrid_analysis_scan(payload)
                 if sandbox_res.verdict == "unknown" and sandbox_res.family == "Timeout/Error":

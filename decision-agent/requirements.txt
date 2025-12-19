@@ -7,3 +7,6 @@ google-cloud-secret-manager>=2.16.0
 google-cloud-logging>=3.6.0
 aiohttp>=3.9.0
 httpx>=0.27.0
+google-api-python-client>=2.0.0
+google-auth>=2.0.0
+python-dotenv>=1.0.0
