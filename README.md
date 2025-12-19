@@ -1,6 +1,6 @@
-# 🛡️ Mail Shield AI 
+# 🛡️ MailShieldAI 
 
-An AI-powered email security platform that detects and analyzes phishing threats in real-time. Mail Shield AI scans incoming emails, assigns risk scores, and provides actionable insights to protect organizations from email-based attacks.
+An AI-powered email security platform that detects and analyzes phishing threats in real-time. MailShieldAI scans incoming emails, assigns risk scores, and provides actionable insights to protect organizations from email-based attacks.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js%2016-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)

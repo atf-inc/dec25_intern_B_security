@@ -48,7 +48,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <Shield className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">MailShield AI</h1>
+              <h1 className="text-lg font-semibold text-foreground">MailShieldAI</h1>
               <p className="text-xs text-muted-foreground">Email Security</p>
             </div>
           </div>

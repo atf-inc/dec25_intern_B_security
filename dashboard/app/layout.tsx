@@ -9,7 +9,7 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "MailShield AI - Email Security Dashboard",
+  title: "MailShieldAI - Email Security Dashboard",
   description: "Advanced AI-powered email protection against phishing and cyber threats",
   generator: "v0.app",
   icons: {
