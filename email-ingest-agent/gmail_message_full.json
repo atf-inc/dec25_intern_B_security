@@ -1,0 +1,61 @@
+{
+  "id": "msg-12345",
+  "threadId": "thread-123",
+  "labelIds": ["INBOX", "IMPORTANT"],
+  "snippet": "Hello, please download the attached invoice...",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/mixed",
+    "filename": "",
+    "headers": [
+      { "name": "From", "value": "Bad Actor <bad@example.com>" },
+      { "name": "Subject", "value": "Urgent: Unpaid Invoice" },
+      { "name": "To", "value": "victim@example.com" }
+    ],
+    "body": { "size": 0 },
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "multipart/alternative",
+        "filename": "",
+        "headers": [],
+        "body": { "size": 0 },
+        "parts": [
+          {
+            "partId": "0.0",
+            "mimeType": "text/plain",
+            "filename": "",
+            "headers": [],
+            "body": {
+              "size": 50,
+              "data": "UGxlYXNlIGNsaWNrIGhlcmU6IGh0dHA6Ly9tYWx3YXJlLmNvbS9kb3dubG9hZA=="
+            }
+          },
+          {
+            "partId": "0.1",
+            "mimeType": "text/html",
+            "filename": "",
+            "headers": [],
+            "body": {
+              "size": 100,
+              "data": "PGh0bWw+PGJvZHk+PGEgaHJlZj0iaHR0cHM6Ly9maXNoaW5nLXNpdGUuY29tIj5DbGljayBIZXJlPC9hPjwvYm9keT48L2h0bWw+"
+            }
+          }
+        ]
+      },
+      {
+        "partId": "1",
+        "mimeType": "application/pdf",
+        "filename": "invoice.pdf",
+        "headers": [],
+        "body": {
+          "attachmentId": "att-123",
+          "size": 10240,
+          "data": ""
+        }
+      }
+    ]
+  },
+  "sizeEstimate": 15000,
+  "historyId": "9999"
+}
