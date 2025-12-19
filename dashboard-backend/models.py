@@ -1,18 +1,17 @@
+"""Database models for MailShieldAI - Single User Architecture."""
+
+from __future__ import annotations
+
 import enum
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 
 from sqlmodel import JSON, Column, Enum, Field, Relationship, SQLModel
 
 
-class UserRole(str, enum.Enum):
-    platform_admin = "platform_admin"
-    admin = "admin"
-    member = "member"
-
-
 class EmailStatus(str, enum.Enum):
+    """Status of email analysis processing."""
     pending = "PENDING"
     processing = "PROCESSING"
     completed = "COMPLETED"
@@ -20,45 +19,35 @@ class EmailStatus(str, enum.Enum):
 
 
 class RiskTier(str, enum.Enum):
+    """Risk classification tier for analyzed emails."""
     safe = "SAFE"
     cautious = "CAUTIOUS"
     threat = "THREAT"
 
 
-# Define Organisation FIRST (parent), then User and EmailEvent (children)
-# Use List["ClassName"] for forward references to classes not yet defined
-class Organisation(SQLModel, table=True):
-    __tablename__ = "organisations"
-
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    name: str
-    domain: str
-    api_key_hash: str = Field(index=True, unique=True)
-    api_key_prefix: str = Field(max_length=8)
-
-    # Forward references to classes defined later - use string class name only
-    users: List["User"] = Relationship(back_populates="organisation")
-    email_events: List["EmailEvent"] = Relationship(back_populates="organisation")
-
-
 class User(SQLModel, table=True):
+    """User model - represents a single user of the application."""
     __tablename__ = "users"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    org_id: uuid.UUID = Field(foreign_key="organisations.id", index=True)
-    google_id: str = Field(index=True)
-    email: str = Field(index=True)
-    role: UserRole = Field(sa_column=Column(Enum(UserRole, name="user_role_enum")))
+    google_id: str = Field(index=True, unique=True)
+    email: str = Field(index=True, unique=True)
+    name: Optional[str] = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
-    # Organisation is already defined above, so use concrete type
-    organisation: Organisation = Relationship(back_populates="users")
+    # Relationship to emails
+    email_events: List["EmailEvent"] = Relationship(back_populates="user")
 
 
 class EmailEvent(SQLModel, table=True):
+    """Email event model - represents an analyzed email."""
     __tablename__ = "email_events"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    org_id: uuid.UUID = Field(foreign_key="organisations.id", index=True)
+    user_id: uuid.UUID = Field(foreign_key="users.id", index=True)
     sender: str
     recipient: str
     subject: str
@@ -86,5 +75,5 @@ class EmailEvent(SQLModel, table=True):
         sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc)},
     )
 
-    # Organisation is already defined above, so use concrete type
-    organisation: Organisation = Relationship(back_populates="email_events")
+    # Relationship to user
+    user: User = Relationship(back_populates="email_events")

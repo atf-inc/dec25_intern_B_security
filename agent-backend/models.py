@@ -1,3 +1,5 @@
+"""Database models for MailShieldAI Agent Backend - Single User Architecture."""
+
 from __future__ import annotations
 
 import enum
@@ -8,12 +10,8 @@ from typing import Optional
 from sqlmodel import JSON, Column, Enum, Field, Relationship, SQLModel
 
 
-class UserRole(str, enum.Enum):
-    admin = "admin"
-    member = "member"
-
-
 class EmailStatus(str, enum.Enum):
+    """Status of email analysis processing."""
     pending = "PENDING"
     processing = "PROCESSING"
     completed = "COMPLETED"
@@ -21,41 +19,35 @@ class EmailStatus(str, enum.Enum):
 
 
 class RiskTier(str, enum.Enum):
+    """Risk classification tier for analyzed emails."""
     safe = "SAFE"
     cautious = "CAUTIOUS"
     threat = "THREAT"
 
 
-class Organisation(SQLModel, table=True):
-    __tablename__ = "organisations"
-
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    name: str
-    domain: str
-    api_key_hash: str = Field(index=True, unique=True)  # Store hashed value only
-    api_key_prefix: str = Field(max_length=8)  # For identification in UI (e.g., "pg_abc123")
-
-    users: list["User"] = Relationship(back_populates="organisation")
-    email_events: list["EmailEvent"] = Relationship(back_populates="organisation")
-
-
 class User(SQLModel, table=True):
+    """User model - represents a single user of the application."""
     __tablename__ = "users"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    org_id: uuid.UUID = Field(foreign_key="organisations.id", index=True)
-    google_id: str = Field(index=True)
-    email: str = Field(index=True)
-    role: UserRole = Field(sa_column=Column(Enum(UserRole, name="user_role_enum")))
+    google_id: str = Field(index=True, unique=True)
+    email: str = Field(index=True, unique=True)
+    name: Optional[str] = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
-    organisation: Organisation = Relationship(back_populates="users")
+    # Relationship to emails
+    email_events: list["EmailEvent"] = Relationship(back_populates="user")
 
 
 class EmailEvent(SQLModel, table=True):
+    """Email event model - represents an analyzed email."""
     __tablename__ = "email_events"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    org_id: uuid.UUID = Field(foreign_key="organisations.id", index=True)
+    user_id: uuid.UUID = Field(foreign_key="users.id", index=True)
     sender: str
     recipient: str
     subject: str
@@ -64,7 +56,7 @@ class EmailEvent(SQLModel, table=True):
         default=EmailStatus.pending,
         sa_column=Column(
             Enum(EmailStatus, name="email_status_enum"),
-            server_default="PENDING",  # DB-side default for inserts bypassing ORM
+            server_default="PENDING",
         ),
     )
     risk_score: Optional[int] = Field(default=None)
@@ -82,4 +74,5 @@ class EmailEvent(SQLModel, table=True):
         sa_column_kwargs={"onupdate": lambda: datetime.now(timezone.utc)},
     )
 
-    organisation: Organisation = Relationship(back_populates="email_events")
+    # Relationship to user
+    user: User = Relationship(back_populates="email_events")
