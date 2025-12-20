@@ -210,7 +210,7 @@ export function LuffyChatbot() {
                         <div className="luffy-chat-header">
                             <div className="luffy-header-info">
                                 <img
-                                    src="/luffy-avatar.png"
+                                    src="/assets/luffy-avatar.png"
                                     alt="Luffy"
                                     className="luffy-avatar-img"
                                 />
@@ -340,11 +340,11 @@ export function LuffyChatbot() {
                             onClick={() => setIsOpen(true)}
                             aria-label="Open Luffy chatbot"
                         >
-                            {hasAlert ? (
-                                <AlertTriangle className="luffy-fab-icon" size={28} />
-                            ) : (
-                                <Shield className="luffy-fab-icon" size={28} />
-                            )}
+                            <img
+                                src="/assets/luffy-avatar.png"
+                                alt="Luffy"
+                                className="luffy-fab-img"
+                            />
                             {hasAlert && (
                                 <motion.span
                                     initial={{ scale: 0 }}
