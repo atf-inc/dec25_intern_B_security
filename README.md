@@ -1,6 +1,6 @@
 # 🛡️ MailShieldAI 
 
-An AI-powered email security platform that detects and analyzes phishing threats in real-time. MailShieldAI scans incoming emails, assigns risk scores, and provides actionable insights to protect organizations from email-based attacks.
+An AI-powered personal email security dashboard that detects and analyzes phishing threats in real-time. MailShieldAI scans your incoming emails, assigns risk scores, and provides actionable insights to protect you from email-based attacks.
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Next.js%2016-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
@@ -11,13 +11,12 @@ An AI-powered email security platform that detects and analyzes phishing threats
 
 ## ✨ Features
 
-- **📧 Gmail Integration** — Sync and analyze emails directly from Gmail accounts
+- **📧 Gmail Integration** — Sync and analyze emails directly from your Gmail account
 - **🔍 Real-time Analysis** — Background worker continuously processes incoming emails
 - **📊 Risk Scoring** — Assigns risk scores (0-100) and categorizes threats as Safe, Cautious, or Threat
-- **🏢 Multi-tenant** — Organizations with isolated data and API keys
-- **🔐 Google OAuth** — Secure authentication with Google accounts
-- **👥 Role-based Access** — Platform Admin, Admin, and Member roles
-- **📈 Dashboard UI** — Modern Next.js interface for threat monitoring
+- **🔐 Google OAuth** — Secure authentication with your Google account
+- **📈 Dashboard UI** — Modern Next.js interface for personal threat monitoring
+- **🚀 Auto-provisioning** — Just sign in with Google and start using immediately
 
 ---
 
@@ -33,8 +32,7 @@ An AI-powered email security platform that detects and analyzes phishing threats
                                    │
                                    ▼
                         ┌──────────────────────┐
-                        │     PostgreSQL       │
-                        │     / SQLite         │
+                        │  PostgreSQL (GCP)    │
                         └──────────────────────┘
 ```
 
@@ -52,6 +50,7 @@ An AI-powered email security platform that detects and analyzes phishing threats
 
 - **Python 3.12+**
 - **Node.js 18+**
+- **PostgreSQL** (GCP Cloud SQL recommended)
 - **uv** (Python): `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **pnpm** (Node): `npm install -g pnpm`
 
@@ -60,15 +59,25 @@ An AI-powered email security platform that detects and analyzes phishing threats
 From the root of the cloned repository, run:
 
 ```bash
-cd dec25_intern_B_security
 cp example.env dashboard-backend/.env
+cp example.env dashboard/.env.local
 ```
 
 Edit `dashboard-backend/.env` with your credentials:
 ```properties
-DATABASE_URL=sqlite+aiosqlite:///./app.db
+DATABASE_URL=postgresql://user:password@host:5432/mailshieldai
 AUTH_GOOGLE_ID=your-google-client-id
+AUTH_GOOGLE_SECRET=your-google-client-secret
 CORS_ALLOW_ORIGINS=http://localhost:3000
+```
+
+Edit `dashboard/.env.local`:
+```properties
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+AUTH_GOOGLE_ID=your-google-client-id
+AUTH_GOOGLE_SECRET=your-google-client-secret
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-random-secret
 ```
 
 ### 2. Start Backend
@@ -76,7 +85,7 @@ CORS_ALLOW_ORIGINS=http://localhost:3000
 ```bash
 cd dashboard-backend
 uv sync
-uv run python seed_db.py    # Initialize database
+uv run python seed_db.py    # Initialize database (creates tables)
 uv run fastapi dev main.py  # Starts on http://127.0.0.1:8000
 ```
 
@@ -84,18 +93,13 @@ uv run fastapi dev main.py  # Starts on http://127.0.0.1:8000
 
 ```bash
 cd dashboard
-echo "NEXT_PUBLIC_API_URL=http://127.0.0.1:8000" > .env.local
 pnpm install
 pnpm dev  # Starts on http://localhost:3000
 ```
 
-### 4. Add Users
+### 4. Sign In
 
-```bash
-cd dashboard-backend
-# Get your Google ID from backend logs after sign-in attempt
-./.venv/bin/python add_user.py "YOUR_GOOGLE_ID" "your.email@gmail.com" --admin
-```
+Simply visit http://localhost:3000 and sign in with your Google account. Your user account is automatically created on first login!
 
 > 📖 For detailed setup instructions, see [SETUP.md](./SETUP.md)
 
@@ -106,14 +110,11 @@ cd dashboard-backend
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | `GET` | `/health` | Health check | None |
-| `POST` | `/api/emails` | Ingest new email | API Key / Bearer |
+| `GET` | `/api/me` | Get current user info | Bearer |
+| `POST` | `/api/emails` | Ingest new email | Bearer |
 | `GET` | `/api/emails` | List analyzed emails | Bearer |
 | `POST` | `/api/emails/sync` | Sync from Gmail | Bearer + Google Token |
-| `POST` | `/api/organizations` | Create organization | Platform Admin |
-| `GET` | `/api/organizations` | List organizations | Platform Admin |
-| `POST` | `/api/users` | Create user | Admin |
-| `GET` | `/api/users` | List users | Admin |
-| `PATCH` | `/api/users/{id}/role` | Update user role | Admin |
+| `GET` | `/api/stats` | Get email statistics | Bearer |
 
 **API Documentation:** http://127.0.0.1:8000/docs
 
@@ -121,18 +122,10 @@ cd dashboard-backend
 
 ## 🔒 Security
 
-- **API Keys** — Securely hashed with SHA-256, only prefix shown after creation
 - **Google OAuth** — Production-grade authentication with token verification
 - **CORS** — Strict origin validation (wildcards blocked in production)
-- **Role-based Access** — Fine-grained permissions per endpoint
-
-### User Roles
-
-| Role | Permissions |
-|------|-------------|
-| `platform_admin` | Full access across all organizations |
-| `admin` | Manage users and emails within their organization |
-| `member` | View emails within their organization |
+- **Auto-provisioning** — Users created automatically on first Google sign-in
+- **PostgreSQL** — Production-ready database with connection pooling
 
 ---
 
@@ -148,24 +141,32 @@ cd dashboard-backend
 
 ## 🛠️ Development
 
-### Run Tests
+### Dev Mode
+
+For local development without Google OAuth:
 
 ```bash
-# Backend
-cd dashboard-backend
-uv run pytest
+# In dashboard-backend/.env
+DEV_MODE=true
+```
 
-# Agent
+Then use `dev_anytoken` as your bearer token for API requests.
+
+### Run Worker
+
+```bash
 cd agent-backend
-uv run pytest
+uv sync
+uv run python -m worker
 ```
 
 ### Environment Variables
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `DATABASE_URL` | Database connection string | ✅ |
+| `DATABASE_URL` | PostgreSQL connection string | ✅ |
 | `AUTH_GOOGLE_ID` | Google OAuth Client ID | ✅ (prod) |
+| `AUTH_GOOGLE_SECRET` | Google OAuth Client Secret | ✅ (prod) |
 | `CORS_ALLOW_ORIGINS` | Comma-separated allowed origins | ✅ |
 | `DEV_MODE` | Enable dev mode (bypasses strict auth) | ❌ |
 | `POLL_INTERVAL_SECONDS` | Worker poll interval | ❌ (default: 5) |
@@ -185,8 +186,7 @@ uv run pytest
 │   ├── main.py             # API routes and auth
 │   ├── models.py           # SQLModel database models
 │   ├── database.py         # Database connection
-│   ├── seed_db.py          # Database seeding script
-│   └── add_user.py         # User management CLI
+│   └── seed_db.py          # Database seeding script
 ├── agent-backend/          # Background worker
 │   ├── worker.py           # Email processing loop
 │   ├── models.py           # Shared models

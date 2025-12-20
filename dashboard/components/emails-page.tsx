@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import * as React from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { useSession } from "next-auth/react"
-import { Filter, Mail, Search } from "lucide-react"
+import { AlertTriangle, CheckCircle, Paperclip, Search, XCircle, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,17 +19,59 @@ const tierColor: Record<string, string> = {
   THREAT: "text-destructive bg-destructive/10",
 }
 
+const threatCategoryColor: Record<string, string> = {
+  NONE: "text-green-500",
+  PHISHING: "text-red-500",
+  MALWARE: "text-red-600",
+  SPAM: "text-yellow-500",
+  BEC: "text-orange-500",
+  SPOOFING: "text-red-400",
+  SUSPICIOUS: "text-yellow-600",
+}
+
+const authStatusIcon = (status: string | undefined) => {
+  if (!status) return <span className="text-muted-foreground text-xs">-</span>
+  if (status === "PASS") return <CheckCircle className="h-3 w-3 text-green-500" />
+  if (status === "FAIL") return <XCircle className="h-3 w-3 text-red-500" />
+  return <AlertTriangle className="h-3 w-3 text-yellow-500" />
+}
+
+const formatDate = (dateStr: string | undefined) => {
+  if (!dateStr) return "-"
+  const date = new Date(dateStr)
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
 export function EmailsPage() {
   const { data: session } = useSession()
   const [emails, setEmails] = useState<Email[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>("all")
+
+  // Track sync state to avoid redundant syncs
+  const syncedRef = useRef(false)
+  const lastTokenRef = useRef<string | null>(null)
 
   useEffect(() => {
     let active = true
     const load = async () => {
-      setLoading(true)
+      // If the token hasn't changed, don't re-fetch to avoid flicker on tab switch
+      if (session?.idToken && lastTokenRef.current === session.idToken) {
+        return
+      }
+      
+      // Only show loading state if we have no data to avoid flash
+      if (emails.length === 0) {
+        setLoading(true)
+      }
+      
       setError(null)
       try {
         if (!session?.idToken) {
@@ -37,19 +80,18 @@ export function EmailsPage() {
           return
         }
 
-        // Trigger sync if we have an access token (background async or await?)
-        // User asked to "trigger fetch_gmail_messages... in a background task... ensure commits occur only for new records"
-        // On frontend, we should probably await sync then fetch, or fetch then sync in bg?
-        // The prompt implies we should trigger the sync.
-        if (session.accessToken) {
+        // Trigger sync only once per session mount
+        if (session.accessToken && !syncedRef.current) {
+          syncedRef.current = true
           // Fire and forget sync, don't block UI
           syncEmails(session.idToken, session.accessToken).catch(console.error)
         }
 
-        // Fetch local db emails
+        // Fetch emails (uses cache if available)
         const data = await fetchEmails(session.idToken)
         if (active) {
           setEmails(data)
+          lastTokenRef.current = session.idToken
         }
       } catch (err) {
         if (active) {
@@ -66,7 +108,24 @@ export function EmailsPage() {
     return () => {
       active = false
     }
-  }, [session])
+  }, [session, emails.length])
+
+  // Manual refresh function
+  const handleRefresh = async () => {
+    if (!session?.idToken || !session?.accessToken) return
+    
+    setRefreshing(true)
+    try {
+      // Clear cache and sync fresh data
+      await syncEmails(session.idToken, session.accessToken)
+      const data = await fetchEmails(session.idToken)
+      setEmails(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh emails")
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const filteredEmails = useMemo(() => {
     if (statusFilter === "all") return emails
@@ -152,10 +211,17 @@ export function EmailsPage() {
                   <SelectItem value="PROCESSING">Processing</SelectItem>
                   <SelectItem value="COMPLETED">Completed</SelectItem>
                   <SelectItem value="FAILED">Failed</SelectItem>
+                  <SelectItem value="SPAM">Spam</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="icon">
-                <Filter className="h-4 w-4" />
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                title="Refresh emails"
+              >
+                <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
               </Button>
             </div>
           </div>
@@ -168,37 +234,45 @@ export function EmailsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Email ID</TableHead>
-                  <TableHead>Recipient</TableHead>
+                  <TableHead className="w-[100px]">Time</TableHead>
                   <TableHead>Sender</TableHead>
                   <TableHead>Subject</TableHead>
+                  <TableHead>Threat</TableHead>
+                  <TableHead className="text-center">Score</TableHead>
+                  <TableHead className="text-center">Auth</TableHead>
+                  <TableHead>Attachments</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Risk</TableHead>
-                  <TableHead>Score</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredEmails.map((email) => (
                   <TableRow key={email.id} className="cursor-pointer hover:bg-accent/50">
                     <TableCell>
-                      <code className="text-xs font-mono text-muted-foreground">{email.id}</code>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {formatDate(email.received_at)}
+                      </span>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Mail className="h-3 w-3 text-muted-foreground" />
-                        <span className="text-sm text-foreground">{email.recipient}</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm text-foreground truncate max-w-[200px]" title={email.sender}>
+                          {email.sender}
+                        </span>
+                        {email.sender_ip && (
+                          <span className="text-xs text-muted-foreground font-mono">{email.sender_ip}</span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm text-foreground">{email.sender}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-foreground max-w-xs truncate block">{email.subject}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-xs">
-                        {email.status}
-                      </Badge>
+                      <div className="flex flex-col max-w-[250px]">
+                        <span className="text-sm text-foreground truncate" title={email.subject}>
+                          {email.subject}
+                        </span>
+                        {email.detection_reason && (
+                          <span className="text-xs text-muted-foreground truncate" title={email.detection_reason}>
+                            {email.detection_reason}
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -209,21 +283,66 @@ export function EmailsPage() {
                               {email.risk_tier}
                             </span>
                           </>
+                        ) : email.threat_category && email.threat_category !== "NONE" ? (
+                          <span className={`text-xs font-medium ${threatCategoryColor[email.threat_category] ?? "text-muted-foreground"}`}>
+                            {email.threat_category}
+                          </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">Pending</span>
+                          <span className="text-xs text-muted-foreground">-</span>
                         )}
                       </div>
                     </TableCell>
+                    <TableCell className="text-center">
+                      {email.risk_score !== undefined && email.risk_score !== null ? (
+                        <span className={`text-xs font-medium ${
+                          email.risk_score >= 70 ? "text-red-500" :
+                          email.risk_score >= 40 ? "text-yellow-500" :
+                          "text-green-500"
+                        }`}>
+                          {email.risk_score}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell>
-                      <span className="text-xs text-muted-foreground">
-                        {email.risk_score ?? "-"}
-                      </span>
+                      <div className="flex items-center justify-center gap-1" title={`SPF: ${email.spf_status || "N/A"} | DKIM: ${email.dkim_status || "N/A"} | DMARC: ${email.dmarc_status || "N/A"}`}>
+                        <span className="flex items-center gap-0.5">
+                          <span className="text-[10px] text-muted-foreground">S</span>
+                          {authStatusIcon(email.spf_status)}
+                        </span>
+                        <span className="flex items-center gap-0.5">
+                          <span className="text-[10px] text-muted-foreground">D</span>
+                          {authStatusIcon(email.dkim_status)}
+                        </span>
+                        <span className="flex items-center gap-0.5">
+                          <span className="text-[10px] text-muted-foreground">M</span>
+                          {authStatusIcon(email.dmarc_status)}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {email.attachment_info ? (
+                        <div className="flex items-center gap-1" title={email.attachment_info}>
+                          <Paperclip className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground truncate max-w-[80px]">
+                            {email.attachment_info}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {email.status}
+                      </Badge>
                     </TableCell>
                   </TableRow>
                 ))}
                 {!filteredEmails.length && !loading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center text-sm text-muted-foreground">
                       No emails found for this filter.
                     </TableCell>
                   </TableRow>

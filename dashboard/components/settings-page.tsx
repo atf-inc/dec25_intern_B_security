@@ -6,73 +6,73 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
-import { Building2, Shield, Bell, Database, Key } from "lucide-react"
+import { Shield, Bell, Database, User } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useSession } from "next-auth/react"
 
 export function SettingsPage() {
+  const { data: session } = useSession()
+  const user = session?.user
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground">Manage your organization and system preferences</p>
+        <p className="text-muted-foreground">Manage your account and security preferences</p>
       </div>
 
-      <Tabs defaultValue="organization" className="space-y-6">
+      <Tabs defaultValue="profile" className="space-y-6">
         <TabsList className="grid w-full max-w-md grid-cols-3">
-          <TabsTrigger value="organization">Organization</TabsTrigger>
+          <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="organization" className="space-y-4">
+        <TabsContent value="profile" className="space-y-4">
           <Card className="border-border">
             <CardHeader>
               <div className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-primary" />
-                <CardTitle className="text-foreground">Organization Details</CardTitle>
+                <User className="h-5 w-5 text-primary" />
+                <CardTitle className="text-foreground">Profile Information</CardTitle>
               </div>
-              <CardDescription>Update your organization information</CardDescription>
+              <CardDescription>Your account details from Google</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="org-name">Organization Name</Label>
-                <Input id="org-name" defaultValue="Acme Corporation" />
+                <Label htmlFor="user-name">Name</Label>
+                <Input id="user-name" defaultValue={user?.name || ""} disabled />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="org-domain">Email Domain</Label>
-                <Input id="org-domain" defaultValue="company.com" />
+                <Label htmlFor="user-email">Email</Label>
+                <Input id="user-email" type="email" defaultValue={user?.email || ""} disabled />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="org-email">Admin Email</Label>
-                <Input id="org-email" type="email" defaultValue="admin@company.com" />
-              </div>
-              <Button>Save Changes</Button>
+              <p className="text-xs text-muted-foreground">
+                Profile information is managed through your Google account.
+              </p>
             </CardContent>
           </Card>
 
           <Card className="border-border">
             <CardHeader>
               <div className="flex items-center gap-2">
-                <Key className="h-5 w-5 text-primary" />
-                <CardTitle className="text-foreground">API Configuration</CardTitle>
+                <Database className="h-5 w-5 text-primary" />
+                <CardTitle className="text-foreground">Data & Privacy</CardTitle>
               </div>
-              <CardDescription>Manage API keys for bot backend integration</CardDescription>
+              <CardDescription>Control data retention and privacy settings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="api-key">API Key</Label>
-                <div className="flex gap-2">
-                  <Input id="api-key" type="password" defaultValue="sk_live_123456789abcdef" readOnly />
-                  <Button variant="outline">Regenerate</Button>
-                </div>
+                <Label htmlFor="retention">Email Log Retention Period</Label>
+                <Input id="retention" defaultValue="90 days" />
               </div>
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
                 <div className="space-y-0.5">
-                  <div className="text-sm font-medium text-foreground">Enable API Access</div>
-                  <div className="text-xs text-muted-foreground">Allow external API connections</div>
+                  <div className="text-sm font-medium text-foreground">Anonymous Analytics</div>
+                  <div className="text-xs text-muted-foreground">Share anonymized threat data to improve detection</div>
                 </div>
-                <Switch defaultChecked />
+                <Switch />
               </div>
+              <Button>Save Changes</Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -125,29 +125,6 @@ export function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-
-          <Card className="border-border">
-            <CardHeader>
-              <div className="flex items-center gap-2">
-                <Database className="h-5 w-5 text-primary" />
-                <CardTitle className="text-foreground">Data & Privacy</CardTitle>
-              </div>
-              <CardDescription>Control data retention and privacy settings</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="retention">Email Log Retention Period</Label>
-                <Input id="retention" defaultValue="90 days" />
-              </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="space-y-0.5">
-                  <div className="text-sm font-medium text-foreground">Anonymous Analytics</div>
-                  <div className="text-xs text-muted-foreground">Share anonymized threat data to improve detection</div>
-                </div>
-                <Switch />
-              </div>
-            </CardContent>
-          </Card>
         </TabsContent>
 
         <TabsContent value="notifications" className="space-y-4">
@@ -181,17 +158,10 @@ export function SettingsPage() {
                 </div>
                 <Switch />
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="space-y-0.5">
-                  <div className="text-sm font-medium text-foreground">User Activity</div>
-                  <div className="text-xs text-muted-foreground">Notifications for user changes and access</div>
-                </div>
-                <Switch defaultChecked />
-              </div>
               <Separator />
               <div className="space-y-2">
                 <Label htmlFor="email-notif">Notification Email</Label>
-                <Input id="email-notif" type="email" defaultValue="admin@company.com" />
+                <Input id="email-notif" type="email" defaultValue={user?.email || ""} />
               </div>
               <Button>Save Preferences</Button>
             </CardContent>

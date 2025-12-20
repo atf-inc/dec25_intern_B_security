@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect } from "react"
 
-import { Shield, Users, Mail, Settings, LayoutDashboard, Bell, ChevronDown } from "lucide-react"
+import { Shield, Mail, Settings, LayoutDashboard, Bell, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -14,15 +14,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useSession, signOut } from "next-auth/react"
+import { syncEmails } from "@/lib/api"
 
 const navigation = [
   { name: "Overview", href: "/", icon: LayoutDashboard },
-  { name: "Users", href: "/users", icon: Users },
   { name: "Emails", href: "/emails", icon: Mail },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
@@ -37,6 +36,15 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Trigger background sync immediately when session is ready
+  useEffect(() => {
+    if (session?.accessToken && session?.idToken) {
+      syncEmails(session.idToken, session.accessToken).catch((err) => 
+        console.error("Background sync failed:", err)
+      )
+    }
+  }, [session])
 
   return (
     <div className="flex h-screen bg-background">
@@ -90,27 +98,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           {mounted ? (
             <>
               <div className="flex items-center gap-4">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-2 bg-transparent">
-                      <span>Organization</span>
-                      <Badge variant="secondary" className="text-xs">
-                        Enterprise
-                      </Badge>
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-56">
-                    <DropdownMenuLabel>Switch Organization</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>
-                      <div className="flex flex-col">
-                        <span className="font-medium">Acme Corp</span>
-                        <span className="text-xs text-muted-foreground">acme.com</span>
-                      </div>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <h2 className="text-lg font-medium text-foreground">
+                  Welcome back{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
+                </h2>
               </div>
 
               <div className="flex items-center gap-4">
@@ -135,10 +125,13 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                   <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuLabel>My Account</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem>Profile Settings</DropdownMenuItem>
-                    <DropdownMenuItem>Preferences</DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <span className="text-xs text-muted-foreground">{user?.email}</span>
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/sign-in" })}>Log out</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/sign-in" })}>
+                      Log out
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>

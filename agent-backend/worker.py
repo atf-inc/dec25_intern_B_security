@@ -17,10 +17,10 @@ BATCH_LIMIT = int(os.getenv("BATCH_LIMIT", "10"))
 
 def classify_risk(score: int) -> RiskTier:
     if score < 30:
-        return RiskTier.safe
+        return RiskTier.SAFE
     if score < 80:
-        return RiskTier.cautious
-    return RiskTier.threat
+        return RiskTier.CAUTIOUS
+    return RiskTier.THREAT
 
 
 def build_dummy_analysis(score: int) -> dict:
@@ -34,13 +34,13 @@ def build_dummy_analysis(score: int) -> dict:
 
 async def fetch_pending(session: AsyncSession) -> list[EmailEvent]:
     result = await session.exec(
-        select(EmailEvent).where(EmailEvent.status == EmailStatus.pending).limit(BATCH_LIMIT)
+        select(EmailEvent).where(EmailEvent.status == EmailStatus.PENDING).limit(BATCH_LIMIT)
     )
     return result.all()
 
 
 async def process_email(session: AsyncSession, email: EmailEvent) -> None:
-    email.status = EmailStatus.processing
+    email.status = EmailStatus.PROCESSING
     session.add(email)
     await session.commit()
     await session.refresh(email)
@@ -53,9 +53,9 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
         email.risk_score = risk_score
         email.risk_tier = risk_tier
         email.analysis_result = analysis_result
-        email.status = EmailStatus.completed
+        email.status = EmailStatus.COMPLETED
     except Exception:  # noqa: BLE001
-        email.status = EmailStatus.failed
+        email.status = EmailStatus.FAILED
         email.analysis_result = {"error": "processing_failed"}
 
     session.add(email)
