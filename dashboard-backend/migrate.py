@@ -37,6 +37,11 @@ async def migrate():
         "ALTER TABLE email_events ADD COLUMN IF NOT EXISTS dmarc_status VARCHAR",
         "ALTER TABLE email_events ADD COLUMN IF NOT EXISTS sender_ip VARCHAR",
         "ALTER TABLE email_events ADD COLUMN IF NOT EXISTS attachment_info VARCHAR",
+        
+        # Add SPAM value to email_status_enum
+        # usage of 'IF NOT EXISTS' for enum values requires newer Postgres or DO block, 
+        # but simpler to just run it and ignore error if already exists (handled by loop below)
+        "ALTER TYPE email_status_enum ADD VALUE IF NOT EXISTS 'SPAM'",
     ]
     
     async with engine.begin() as conn:
