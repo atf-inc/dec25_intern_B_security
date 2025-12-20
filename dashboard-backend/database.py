@@ -21,11 +21,10 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-# Validate PostgreSQL URL
-if not DATABASE_URL.startswith("postgresql+asyncpg://"):
+# Validate Database URL
+if not (DATABASE_URL.startswith("postgresql+asyncpg://") or DATABASE_URL.startswith("sqlite+aiosqlite://")):
     raise RuntimeError(
-        "Invalid DATABASE_URL. Only PostgreSQL is supported. "
-        "Format: postgresql://USER:PASSWORD@HOST:PORT/DATABASE"
+        "Invalid DATABASE_URL. Only PostgreSQL and SQLite are supported. "
     )
 
 # GCP Cloud SQL PostgreSQL configuration
