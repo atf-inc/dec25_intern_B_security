@@ -46,7 +46,7 @@ export function OverviewPage() {
   const threatEmails = emails.filter(e => e.risk_tier === "THREAT").length
   const analyzedEmails = safeEmails + cautiousEmails + threatEmails
   const protectionRate = analyzedEmails > 0 
-    ? ((safeEmails + threatEmails) / analyzedEmails * 100).toFixed(1)
+    ? ((safeEmails / analyzedEmails) * 100).toFixed(1)
     : "100.0"
 
   // Recent emails for display

@@ -5,7 +5,6 @@ from collections.abc import AsyncGenerator
 
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -28,13 +27,11 @@ if not (DATABASE_URL.startswith("postgresql+asyncpg://") or DATABASE_URL.startsw
     )
 
 # GCP Cloud SQL PostgreSQL configuration
-# Using NullPool for async engines (SQLAlchemy 2.0+ requirement)
-# For production, connection pooling is handled at the Cloud SQL proxy level
+# Using default AsyncAdaptedQueuePool (as recommended by CodeRabbit)
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True,
-    poolclass=NullPool,  # NullPool is recommended for async engines
 )
 
 

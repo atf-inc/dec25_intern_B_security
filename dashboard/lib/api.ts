@@ -1,13 +1,7 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
-// Cache configuration
-const EMAILS_CACHE_KEY = "mailshield_emails_cache"
-const CACHE_EXPIRY_MS = 5 * 60 * 1000 // 5 minutes
+// Cache configuration removed
 
-type CacheEntry<T> = {
-  data: T
-  timestamp: number
-}
 
 type FetchOptions = {
   token?: string
@@ -44,14 +38,7 @@ async function request<T>(path: string, { token, headers, method = "GET", body }
   return res.json() as Promise<T>
 }
 
-// Cache utilities - REMOVED to prevent cross-user data leakage
-// Using simple in-memory caching or reliance on SWR/React Query is better.
-// For now, we fetch fresh data to ensure security context isolation.
 
-export function clearEmailsCache(): void {
-  if (typeof window === "undefined") return
-  localStorage.removeItem(EMAILS_CACHE_KEY)
-}
 
 export type Email = {
   id: string
@@ -79,16 +66,14 @@ export type Email = {
   analysis_result?: Record<string, unknown>
 }
 
-export async function fetchEmails(token: string, options?: { skipCache?: boolean }): Promise<Email[]> {
+export async function fetchEmails(token: string): Promise<Email[]> {
   // Fetch from API (limit to 20 most recent)
   // We removed localStorage caching to prevent data leakage between users (Issue #121)
   const emails = await request<Email[]>("/api/emails?limit=20", { token })
   return emails
 }
 
-export async function fetchEmailsWithRefresh(token: string): Promise<Email[]> {
-  return fetchEmails(token)
-}
+
 
 export async function syncEmails(token: string, googleToken: string): Promise<{ status: string, new_messages: number }> {
   return request("/api/emails/sync", {

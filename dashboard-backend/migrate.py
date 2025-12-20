@@ -28,6 +28,13 @@ async def migrate():
         "ALTER TABLE email_events ADD COLUMN IF NOT EXISTS received_at TIMESTAMP WITHOUT TIME ZONE",
         
         # Threat Intelligence columns
+        # Ensure enums exist (Postgres doesn't support IF NOT EXISTS for types easily in all versions, 
+        # but create_type=False in sqlalchemy relies on them being there)
+        # Note: These might fail if they already exist, but for this simple script it's acceptable fallback
+        # Ideally we use Alembic. 
+        # We can't robustly "CREATE TYPE IF NOT EXISTS" without PL/SQL DO block.
+        # "DO $$ BEGIN CREATE TYPE threat_category_enum AS ENUM ('NONE', 'PHISHING', 'MALWARE', 'SPAM', 'BEC', 'SPOOFING', 'SUSPICIOUS'); EXCEPTION WHEN duplicate_object THEN null; END $$;",
+        
         "ALTER TABLE email_events ADD COLUMN IF NOT EXISTS threat_category VARCHAR",
         "ALTER TABLE email_events ADD COLUMN IF NOT EXISTS detection_reason VARCHAR",
         

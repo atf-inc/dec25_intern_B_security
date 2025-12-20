@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { type Email, fetchEmails, fetchEmailsWithRefresh, syncEmails, clearEmailsCache } from "@/lib/api"
+import { type Email, fetchEmails, syncEmails } from "@/lib/api"
 
 const tierColor: Record<string, string> = {
   SAFE: "text-green-500 bg-green-500/10",
@@ -117,9 +117,8 @@ export function EmailsPage() {
     setRefreshing(true)
     try {
       // Clear cache and sync fresh data
-      clearEmailsCache()
       await syncEmails(session.idToken, session.accessToken)
-      const data = await fetchEmailsWithRefresh(session.idToken)
+      const data = await fetchEmails(session.idToken)
       setEmails(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to refresh emails")
