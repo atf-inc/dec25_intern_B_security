@@ -484,7 +484,7 @@ async def sync_emails(
                 dmarc_status=g_email.get("dmarc_status"),
                 sender_ip=g_email.get("sender_ip"),
                 attachment_info=g_email.get("attachment_info"),
-                status=EmailStatus.PENDING,
+                status=g_email.get("status", EmailStatus.PENDING),
             )
             session.add(email)
             count += 1
