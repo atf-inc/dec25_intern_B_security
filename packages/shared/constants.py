@@ -2,6 +2,7 @@ import enum
 
 class EmailStatus(str, enum.Enum):
     """Status of email analysis processing."""
+    PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
