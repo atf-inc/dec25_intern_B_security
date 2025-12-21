@@ -3,7 +3,7 @@ import type { Metadata } from "next"
 import { SessionProvider } from "next-auth/react"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
-import { LuffyChatbot } from "@/components/luffy-chatbot"
+import { LuffyChatbot } from "@/components/luffy/luffy-chatbot"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })

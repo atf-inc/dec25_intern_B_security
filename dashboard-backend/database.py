@@ -8,8 +8,6 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from models import EmailEvent, User  # noqa: F401 - ensure metadata import
-
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
