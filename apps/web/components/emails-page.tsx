@@ -75,7 +75,6 @@ export function EmailsPage() {
       setError(null)
       try {
         if (!session?.idToken) {
-          // Wait for session to load or redirect handled by middleware
           if (session === null) throw new Error("Not authenticated")
           return
         }

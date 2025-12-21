@@ -36,3 +36,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 dashboard-backend/app.db
+
+# Docker & Deployment
+Dockerfile
+.dockerignore
+.gcloudignore
+deploy*.sh

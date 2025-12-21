@@ -5,11 +5,17 @@ import os
 import random
 from datetime import datetime, timezone
 
+from fastapi import FastAPI
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from .database import get_session, init_db
-from .models import EmailEvent, EmailStatus, RiskTier
+# Support both module import (for tests) and direct execution (for Docker)
+try:
+    from .database import get_session, init_db
+    from .models import EmailEvent, EmailStatus, RiskTier
+except ImportError:
+    from database import get_session, init_db
+    from models import EmailEvent, EmailStatus, RiskTier
 
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", "5"))
 BATCH_LIMIT = int(os.getenv("BATCH_LIMIT", "10"))
@@ -88,8 +94,28 @@ async def run_loop() -> None:
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
+app = FastAPI()
+
+
+@app.get("/")
+async def health_check():
+    """Health check endpoint for Cloud Run."""
+    return {"status": "ok", "service": "agent-worker"}
+
+
+@app.on_event("startup")
+async def on_startup():
+    """Start the worker loop in the background."""
+    # Run the worker loop as a background task
+    asyncio.create_task(run_loop())
+
+
 def main() -> None:
-    asyncio.run(run_loop())
+    """Entry point for the worker service."""
+    port = int(os.getenv("PORT", "8080"))
+    # Run uvicorn server
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":

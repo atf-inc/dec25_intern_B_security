@@ -458,6 +458,7 @@ async def list_emails(
     return result.all()
 
 
+
 @app.post("/api/emails/sync", status_code=status.HTTP_202_ACCEPTED)
 async def sync_emails(
     x_google_token: str = Header(..., alias="X-Google-Token"),
