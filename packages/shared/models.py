@@ -11,20 +11,7 @@ from sqlalchemy import DateTime
 from sqlmodel import JSON, Column, Enum, Field, SQLModel
 
 
-class EmailStatus(str, enum.Enum):
-    """Status of email analysis processing."""
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    SPAM = "SPAM"
-
-
-class RiskTier(str, enum.Enum):
-    """Risk classification tier for analyzed emails."""
-    SAFE = "SAFE"
-    CAUTIOUS = "CAUTIOUS"
-    THREAT = "THREAT"
+from .constants import EmailStatus, RiskTier, ThreatCategory
 
 
 def utc_now() -> datetime:
@@ -44,17 +31,6 @@ class User(SQLModel, table=True):
         default_factory=utc_now,
         nullable=False,
     )
-
-
-class ThreatCategory(str, enum.Enum):
-    """Category of detected threat."""
-    NONE = "NONE"
-    PHISHING = "PHISHING"
-    MALWARE = "MALWARE"
-    SPAM = "SPAM"
-    BEC = "BEC"  # Business Email Compromise
-    SPOOFING = "SPOOFING"
-    SUSPICIOUS = "SUSPICIOUS"
 
 
 class EmailEvent(SQLModel, table=True):
@@ -110,3 +86,45 @@ class EmailEvent(SQLModel, table=True):
         default_factory=utc_now,
         sa_column=Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False),
     )
+
+
+class EmailCreate(SQLModel):
+    """Schema for creating an email event."""
+    sender: str
+    recipient: str
+    subject: str
+    body_preview: Optional[str] = None
+
+
+class EmailRead(SQLModel):
+    """Schema for reading an email event."""
+    id: uuid.UUID
+    sender: str
+    recipient: str
+    subject: str
+    body_preview: Optional[str]
+    received_at: Optional[datetime] = None
+    
+    # Threat Intelligence
+    threat_category: Optional[ThreatCategory] = None
+    detection_reason: Optional[str] = None
+    
+    # Security Metadata
+    spf_status: Optional[str] = None
+    dkim_status: Optional[str] = None
+    dmarc_status: Optional[str] = None
+    sender_ip: Optional[str] = None
+    attachment_info: Optional[str] = None
+    
+    # Processing
+    status: EmailStatus
+    risk_score: Optional[int] = None
+    risk_tier: Optional[RiskTier] = None
+    analysis_result: Optional[dict] = None
+
+
+class UserRead(SQLModel):
+    """Schema for reading user info."""
+    id: uuid.UUID
+    email: str
+    name: Optional[str]
