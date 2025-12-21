@@ -692,15 +692,6 @@ def fetch_gmail_messages(
     ]
 
 
-# =============================================================================
-# GMAIL WATCH SERVICE (PUB/SUB PUSH NOTIFICATIONS)
-# =============================================================================
-# Manages Gmail push notification subscriptions.
-# Each user must be subscribed individually to receive real-time updates.
-# Watches expire after ~7 days and must be renewed.
-# =============================================================================
-
-
 class WatchInfo(BaseModel):
     """
     Information about a Gmail watch subscription.
@@ -842,8 +833,7 @@ class GmailWatchService:
             )
             
             logger.info(
-                f"Gmail watch established",
-                extra={"history_id": watch_info.history_id, "expires": watch_info.expiration_datetime.isoformat()}
+                "Gmail watch established", extra={"history_id": watch_info.history_id, "expires": watch_info.expiration_datetime.isoformat()}
             )
             
             return watch_info
