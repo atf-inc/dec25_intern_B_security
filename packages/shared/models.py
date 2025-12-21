@@ -11,20 +11,7 @@ from sqlalchemy import DateTime
 from sqlmodel import JSON, Column, Enum, Field, SQLModel
 
 
-class EmailStatus(str, enum.Enum):
-    """Status of email analysis processing."""
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-    SPAM = "SPAM"
-
-
-class RiskTier(str, enum.Enum):
-    """Risk classification tier for analyzed emails."""
-    SAFE = "SAFE"
-    CAUTIOUS = "CAUTIOUS"
-    THREAT = "THREAT"
+from .constants import EmailStatus, RiskTier, ThreatCategory
 
 
 def utc_now() -> datetime:
@@ -34,7 +21,8 @@ def utc_now() -> datetime:
 
 class User(SQLModel, table=True):
     """User model - represents a single user of the application."""
-    __tablename__ = "users"
+
+    __tablename__ = 'users'
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     google_id: str = Field(index=True, unique=True)
@@ -44,26 +32,17 @@ class User(SQLModel, table=True):
         default_factory=utc_now,
         nullable=False,
     )
-
-
-class ThreatCategory(str, enum.Enum):
-    """Category of detected threat."""
-    NONE = "NONE"
-    PHISHING = "PHISHING"
-    MALWARE = "MALWARE"
-    SPAM = "SPAM"
-    BEC = "BEC"  # Business Email Compromise
-    SPOOFING = "SPOOFING"
-    SUSPICIOUS = "SUSPICIOUS"
+    refresh_token: Optional[str] = None
 
 
 class EmailEvent(SQLModel, table=True):
     """Email event model - represents an analyzed email."""
-    __tablename__ = "email_events"
+
+    __tablename__ = 'email_events'
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    user_id: uuid.UUID = Field(foreign_key="users.id", index=True)
-    
+    user_id: uuid.UUID = Field(foreign_key='users.id', index=True)
+
     # Essential Identification Fields
     sender: str
     recipient: str
@@ -71,36 +50,33 @@ class EmailEvent(SQLModel, table=True):
     message_id: Optional[str] = Field(default=None, index=True)
     body_preview: Optional[str] = None
     received_at: Optional[datetime] = Field(default=None)  # Email timestamp from headers
-    
+
     # Threat Intelligence Fields
     threat_category: Optional[ThreatCategory] = Field(
-        default=None,
-        sa_column=Column(Enum(ThreatCategory, name="threat_category_enum", create_type=False))
+        default=None, sa_column=Column(Enum(ThreatCategory, name='threat_category_enum', create_type=False))
     )
     detection_reason: Optional[str] = Field(default=None)  # Brief explanation of detection
-    
+
     # Security Metadata Fields
     spf_status: Optional[str] = Field(default=None)  # PASS, FAIL, NEUTRAL, etc.
     dkim_status: Optional[str] = Field(default=None)
     dmarc_status: Optional[str] = Field(default=None)
     sender_ip: Optional[str] = Field(default=None)
-    attachment_info: Optional[str] = Field(default=None)  # Filename(s) if any
-    
+
     # Processing Fields
     status: EmailStatus = Field(
-        default=EmailStatus.PENDING,
+        default=EmailStatus.PROCESSING,
         sa_column=Column(
-            Enum(EmailStatus, name="email_status_enum", create_type=False),
-            server_default="PENDING",
+            Enum(EmailStatus, name='email_status_enum', create_type=False),
+            server_default='PENDING',
         ),
     )
     risk_score: Optional[int] = Field(default=None)  # 0-100
     risk_tier: Optional[RiskTier] = Field(
-        default=None, 
-        sa_column=Column(Enum(RiskTier, name="risk_tier_enum", create_type=False))
+        default=None, sa_column=Column(Enum(RiskTier, name='risk_tier_enum', create_type=False))
     )
     analysis_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
-    
+
     # Timestamps
     created_at: datetime = Field(
         default_factory=utc_now,
@@ -110,3 +86,38 @@ class EmailEvent(SQLModel, table=True):
         default_factory=utc_now,
         sa_column=Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False),
     )
+
+
+class EmailRead(SQLModel):
+    """Schema for reading an email event."""
+
+    id: uuid.UUID
+    sender: str
+    recipient: str
+    subject: str
+    body_preview: Optional[str]
+    received_at: Optional[datetime] = None
+
+    # Threat Intelligence
+    threat_category: Optional[ThreatCategory] = None
+    detection_reason: Optional[str] = None
+
+    # Security Metadata
+    spf_status: Optional[str] = None
+    dkim_status: Optional[str] = None
+    dmarc_status: Optional[str] = None
+    sender_ip: Optional[str] = None
+
+    # Processing
+    status: EmailStatus
+    risk_score: Optional[int] = None
+    risk_tier: Optional[RiskTier] = None
+    analysis_result: Optional[dict] = None
+
+
+class UserRead(SQLModel):
+    """Schema for reading user info."""
+
+    id: uuid.UUID
+    email: str
+    name: Optional[str]

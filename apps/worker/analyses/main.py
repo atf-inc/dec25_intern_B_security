@@ -5,7 +5,7 @@ import httpx
 from typing import List, Optional, Dict, Any, Literal, Set
 from fastapi import FastAPI, BackgroundTasks, status
 from pydantic import BaseModel
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger import json as jsonlogger
 import google.auth
 from googleapiclient.discovery import build
 import base64
