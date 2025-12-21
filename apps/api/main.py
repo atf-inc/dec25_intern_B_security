@@ -458,7 +458,6 @@ async def list_emails(
     return result.all()
 
 
-from starlette.concurrency import run_in_threadpool
 
 @app.post("/api/emails/sync", status_code=status.HTTP_202_ACCEPTED)
 async def sync_emails(
