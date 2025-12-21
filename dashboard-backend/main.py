@@ -304,12 +304,21 @@ def fetch_gmail_messages(access_token: str, limit: int = 20) -> list[dict]:
             except Exception as e:
                 logger.warning(f"Failed to parse message in batch callback: {e}")
 
-        # Use batch request for better performance
-        batch = service.new_batch_http_request(callback=callback)
-        for msg in messages:
-            batch.add(service.users().messages().get(userId="me", id=msg["id"], format="full"))
-        
-        batch.execute()
+        # Process in smaller batches to avoid rate limits (429 Too Many Concurrent Requests)
+        # Gmail free tier often limits concurrent requests.
+        batch_size = 5
+        for i in range(0, len(messages), batch_size):
+            batch = service.new_batch_http_request(callback=callback)
+            chunk = messages[i : i + batch_size]
+            
+            for msg in chunk:
+                batch.add(service.users().messages().get(userId="me", id=msg["id"], format="full"))
+            
+            try:
+                batch.execute()
+            except Exception as e:
+                logger.warning(f"Batch execution failed for chunk {i}: {e}")
+                continue
             
         return email_data
     except Exception as e:

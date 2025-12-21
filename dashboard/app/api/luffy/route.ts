@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { NextRequest, NextResponse } from "next/server"
-import { dummyEmails, getThreatSummary } from "@/lib/dummyEmails"
+import { auth } from "@/auth"
 
 // Initialize Gemini API
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY || "")
@@ -48,6 +48,14 @@ Remember: You are a guardian protecting users from email threats. Take your role
 
 export async function POST(request: NextRequest) {
     try {
+        const session = await auth()
+        if (!session || !session.accessToken) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 }
+            )
+        }
+
         const body = await request.json()
         const { message, conversationHistory = [] } = body
 
@@ -65,28 +73,66 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Prepare email context data
-        const threatSummary = getThreatSummary(dummyEmails)
-        const emailContext = `
+        // Fetch real data from backend
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"
+        
+        // Backend expects ID Token for authentication, not Access Token
+        const token = session.idToken || session.accessToken
+        
+        console.log(`[Luffy] Using token type: ${session.idToken ? 'ID Token' : 'Access Token'} (Length: ${token?.length})`)
+
+        const headers = { 
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        }
+
+        let emailContext = ""
+        let threatSummary = null
+
+        try {
+            // Parallel fetch for speed
+            const [emailsRes, statsRes] = await Promise.all([
+                fetch(`${backendUrl}/api/emails?limit=20`, { headers }),
+                fetch(`${backendUrl}/api/stats`, { headers })
+            ])
+            
+            if (!emailsRes.ok) console.error(`[Luffy] Emails fetch failed: ${emailsRes.status} ${emailsRes.statusText}`)
+            if (!statsRes.ok) console.error(`[Luffy] Stats fetch failed: ${statsRes.status} ${statsRes.statusText}`)
+
+            const emails = emailsRes.ok ? await emailsRes.json() : []
+            const stats = statsRes.ok ? await statsRes.json() : {}
+
+            threatSummary = {
+                total: stats.total_emails || 0,
+                phishing: 0, // Backend stats might not break this down yet, infer from emails?
+                malware: 0,
+                bec: 0,
+                spam: 0,
+                safe: stats.safe || 0,
+                highRiskCount: stats.threat || 0,
+                recentThreats: stats.threat || 0 // Approximate
+            }
+
+             emailContext = `
 ## Current Email Security Data
 
 ### Summary
-- Total emails analyzed: ${threatSummary.total}
-- Phishing attempts: ${threatSummary.phishing}
-- Malware detected: ${threatSummary.malware}
-- BEC (Business Email Compromise): ${threatSummary.bec}
-- Spam emails: ${threatSummary.spam}
-- Safe emails: ${threatSummary.safe}
-- High-risk emails (score ≥ 8): ${threatSummary.highRiskCount}
-- Threats in last 24 hours: ${threatSummary.recentThreats}
+- Total emails analyzed: ${stats.total_emails || 0}
+- Safe: ${stats.safe || 0}
+- Cautious: ${stats.cautious || 0}
+- Threats/High Risk: ${stats.threat || 0}
 
-### Detailed Email Data
-${JSON.stringify(dummyEmails, null, 2)}
+### Recent Emails (Last 20)
+${JSON.stringify(emails, null, 2)}
 `
+        } catch (fetchError) {
+            console.error("Failed to fetch backend data:", fetchError)
+            emailContext = "\nNote: Unable to fetch real-time email data. Please ask General security questions."
+        }
 
         // Build conversation for Gemini
         const model = genAI.getGenerativeModel({
-            model: "models/gemini-2.0-flash",
+            model: "gemini-3-flash-preview", 
             systemInstruction: LUFFY_SYSTEM_PROMPT + "\n\n" + emailContext
         })
 
@@ -110,31 +156,60 @@ ${JSON.stringify(dummyEmails, null, 2)}
         })
 
     } catch (error) {
-        console.error("Luffy API Error:", error)
-
-        // Provide fallback response in case of API error
-        const errorMessage = error instanceof Error ? error.message : "Unknown error"
-
+        console.error("Luffy API Critical Error:", error)
         return NextResponse.json(
             {
                 error: "Failed to get response from Luffy",
-                details: errorMessage
+                details: error instanceof Error ? error.message : "Unknown error",
+                stack: error instanceof Error ? error.stack : undefined
             },
             { status: 500 }
         )
     }
 }
 
-// Health check endpoint
+// Health check and status endpoint
 export async function GET() {
     const hasApiKey = !!process.env.GOOGLE_GEMINI_API_KEY
-    const threatSummary = getThreatSummary(dummyEmails)
+    
+    // Attempt to fetch stats if user is authenticated
+    let threatSummary = null
+    try {
+        const session = await auth()
+        if (session && (session.idToken || session.accessToken)) {
+             const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"
+             const headers = { 
+                "Authorization": `Bearer ${session.idToken || session.accessToken}`,
+                "Content-Type": "application/json"
+            }
+            
+            const statsRes = await fetch(`${backendUrl}/api/stats`, { headers })
+            if (statsRes.ok) {
+                const stats = await statsRes.json()
+                threatSummary = {
+                    total: stats.total_emails || 0,
+                    phishing: 0, 
+                    malware: 0,
+                    bec: 0,
+                    spam: 0,
+                    safe: stats.safe || 0,
+                    highRiskCount: stats.threat || 0,
+                    recentThreats: stats.threat || 0 
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Failed to fetch stats for GET:", e)
+    }
 
     return NextResponse.json({
         status: "ok",
         assistant: "Luffy (ルフィ)",
         apiKeyConfigured: hasApiKey,
-        emailsLoaded: dummyEmails.length,
-        threatSummary
+        mode: "connected_to_backend",
+        threatSummary: threatSummary || {
+            // Fallback empty summary to prevent frontend crash
+            total: 0, phishing: 0, malware: 0, bec: 0, spam: 0, safe: 0, highRiskCount: 0, recentThreats: 0
+        }
     })
 }
