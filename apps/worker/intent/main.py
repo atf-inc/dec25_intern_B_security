@@ -10,7 +10,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from packages.shared.database import get_session, init_db
 from packages.shared.constants import EmailStatus, RiskTier
 from packages.shared.models import EmailEvent
-from packages.shared.queue import get_redis_client, EMAIL_PROCESSING_QUEUE
+from packages.shared.queue import get_redis_client, EMAIL_INTENT_QUEUE
 
 
 def classify_risk(score: int) -> RiskTier:

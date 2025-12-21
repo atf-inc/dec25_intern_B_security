@@ -10,12 +10,19 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Optional
 
+import httplib2
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from packages.shared.constants import EmailStatus, ThreatCategory
+from packages.shared.constants import EmailStatus
 
-from packages.shared.types import AttachmentMetadata, EmailAuthenticationStatus, StructuredEmail, WatchInfo
+from packages.shared.types import (
+    AttachmentMetadata,
+    EmailAuthenticationStatus,
+    StructuredEmail,
+    WatchInfo,
+)
 
 # --- Logging Setup ---
 logger = logging.getLogger(__name__)
@@ -54,43 +61,45 @@ class EmailContentExtractor:
         if not isinstance(part, dict):
             return
 
-        mime_type = part.get('mimeType', '').lower()
-        body = part.get('body', {}) or {}
-        filename = part.get('filename')
-        data = body.get('data')
+        mime_type = part.get("mimeType", "").lower()
+        body = part.get("body", {}) or {}
+        filename = part.get("filename")
+        data = body.get("data")
 
         # 1. Handle attachments (metadata only, NOT content)
         # Security: We never download attachment content to prevent malware execution
-        if filename and body.get('attachmentId'):
+        if filename and body.get("attachmentId"):
             self.attachments.append(
                 AttachmentMetadata(
                     filename=filename,
                     mime_type=mime_type,
-                    size=body.get('size', 0),
-                    attachment_id=body.get('attachmentId'),
+                    size=body.get("size", 0),
+                    attachment_id=body.get("attachmentId"),
                 )
             )
             return  # Don't process attachment body
 
         # 2. Handle body content
-        if data and mime_type in ('text/plain', 'text/html'):
+        if data and mime_type in ("text/plain", "text/html"):
             decoded = decode_base64url(data)
 
-            if mime_type == 'text/plain' and not self.text_body:
+            if mime_type == "text/plain" and not self.text_body:
                 self.text_body = decoded
                 # Extract URLs from plain text
                 self.urls.update(extract_urls(decoded))
 
-            elif mime_type == 'text/html' and not self.html_body:
+            elif mime_type == "text/html" and not self.html_body:
                 self.html_body = decoded
                 # Extract URLs from HTML
                 self.urls.update(extract_urls(decoded))
 
         # 3. Recurse into nested parts
-        for subpart in part.get('parts', []) or []:
+        for subpart in part.get("parts", []) or []:
             self.walk_parts(subpart)
 
-    def extract(self, payload: dict) -> tuple[Optional[str], Optional[str], list[str], list[AttachmentMetadata]]:
+    def extract(
+        self, payload: dict
+    ) -> tuple[Optional[str], Optional[str], list[str], list[AttachmentMetadata]]:
         """
         Extract all content from a Gmail message payload.
 
@@ -141,19 +150,17 @@ class GmailService:
         self.timeout = timeout
         self.trace_context = trace_context
 
-        # Set socket timeout to prevent hanging connections
-        socket.setdefaulttimeout(timeout)
-
         # Build the Gmail API service
+        http = httplib2.Http(timeout=self.timeout)
         if credentials:
-            self.service = build('gmail', 'v1', credentials=credentials)
+            self.service = build("gmail", "v1", credentials=credentials, http=http)
         elif access_token:
             creds = Credentials(token=access_token)
-            self.service = build('gmail', 'v1', credentials=creds)
+            self.service = build("gmail", "v1", credentials=creds, http=http)
         else:
             raise ValueError("Either access_token or credentials must be provided")
 
-        logger.info('GmailService initialized', extra={'trace_context': trace_context})
+        logger.info("GmailService initialized", extra={"trace_context": trace_context})
 
     def _parse_message(self, response: dict) -> Optional[StructuredEmail]:
         """
@@ -166,29 +173,31 @@ class GmailService:
             StructuredEmail or None if parsing fails
         """
         try:
-            payload = response.get('payload', {})
-            headers = payload.get('headers', [])
+            payload = response.get("payload", {})
+            headers = payload.get("headers", [])
 
             # Build headers dict for easy lookup (case-insensitive)
-            headers_dict = {h['name'].lower(): h['value'] for h in headers}
+            headers_dict = {h["name"].lower(): h["value"] for h in headers}
 
             # === Core Fields ===
-            message_id = response.get('id', 'unknown')
-            subject = headers_dict.get('subject', '(No Subject)')
-            sender = headers_dict.get('from', 'Unknown')
-            recipient = headers_dict.get('to', 'Unknown')
-            snippet = response.get('snippet', '')
+            message_id = response.get("id", "unknown")
+            subject = headers_dict.get("subject", "(No Subject)")
+            sender = headers_dict.get("from", "Unknown")
+            recipient = headers_dict.get("to", "Unknown")
+            snippet = response.get("snippet", "")
 
             # === Timestamp ===
-            date_str = headers_dict.get('date')
+            date_str = headers_dict.get("date", "")
             received_at = parse_email_date(date_str)
 
             # === Security: Authentication Status ===
-            auth_header = headers_dict.get('authentication-results', '')
+            auth_header = headers_dict.get("authentication-results", "")
             auth_status = parse_auth_results(auth_header)
 
             # === Security: Sender IP ===
-            received_headers = [h['value'] for h in headers if h['name'].lower() == 'received']
+            received_headers = [
+                h["value"] for h in headers if h["name"].lower() == "received"
+            ]
             sender_ip = extract_sender_ip(received_headers)
 
             # === Content Extraction ===
@@ -196,10 +205,8 @@ class GmailService:
             text_body, html_body, urls, attachments = extractor.extract(payload)
 
             # === Classification ===
-            label_ids = response.get('labelIds', [])
+            label_ids = response.get("labelIds", [])
             status = EmailStatus.PROCESSING
-            if 'SPAM' in label_ids:
-                status = ThreatCategory.SPAM
 
             return StructuredEmail(
                 message_id=message_id,
@@ -219,10 +226,12 @@ class GmailService:
             )
 
         except Exception as e:
-            logger.warning(f'Failed to parse message: {e}', exc_info=True)
+            logger.warning(f"Failed to parse message: {e}", exc_info=True)
             return None
 
-    def fetch_emails(self, limit: int = 20, include_spam_trash: bool = True) -> list[StructuredEmail]:
+    def fetch_emails(
+        self, limit: int = 20, include_spam_trash: bool = True
+    ) -> list[StructuredEmail]:
         """
         Fetch emails from Gmail using batch requests for performance.
 
@@ -238,24 +247,29 @@ class GmailService:
         """
         try:
             logger.info(
-                f'Fetching up to {limit} emails',
-                extra={'trace_context': self.trace_context, 'include_spam_trash': include_spam_trash},
+                f"Fetching up to {limit} emails",
+                extra={
+                    "trace_context": self.trace_context,
+                    "include_spam_trash": include_spam_trash,
+                },
             )
 
             # Step 1: List message IDs
             results = (
                 self.service.users()
                 .messages()
-                .list(userId='me', maxResults=limit, includeSpamTrash=include_spam_trash)
+                .list(
+                    userId="me", maxResults=limit, includeSpamTrash=include_spam_trash
+                )
                 .execute()
             )
 
-            messages = results.get('messages', [])
+            messages = results.get("messages", [])
             if not messages:
-                logger.info('No messages found')
+                logger.info("No messages found")
                 return []
 
-            logger.info(f'Found {len(messages)} messages, fetching full content')
+            logger.info(f"Found {len(messages)} messages, fetching full content")
 
             # Step 2: Batch fetch full message content
             email_data: list[StructuredEmail] = []
@@ -264,7 +278,7 @@ class GmailService:
             def batch_callback(request_id: str, response: dict, exception: Exception):
                 """Callback for each message in the batch request."""
                 if exception:
-                    logger.error(f'Error fetching message {request_id}: {exception}')
+                    logger.error(f"Error fetching message {request_id}: {exception}")
                     errors.append(request_id)
                     return
 
@@ -276,14 +290,18 @@ class GmailService:
             batch = self.service.new_batch_http_request(callback=batch_callback)
 
             for msg in messages:
-                batch.add(self.service.users().messages().get(userId='me', id=msg['id'], format='full'))
+                batch.add(
+                    self.service.users()
+                    .messages()
+                    .get(userId="me", id=msg["id"], format="full")
+                )
 
             # Execute batch (single HTTP request for all messages!)
             batch.execute()
 
             logger.info(
-                f'Fetched {len(email_data)} emails successfully, {len(errors)} errors',
-                extra={'trace_context': self.trace_context},
+                f"Fetched {len(email_data)} emails successfully, {len(errors)} errors",
+                extra={"trace_context": self.trace_context},
             )
 
             return email_data
@@ -309,35 +327,40 @@ class GmailService:
             List of new StructuredEmail objects
         """
         try:
-            logger.info(f'Fetching history since {history_id}')
+            logger.info(f"Fetching history since {history_id}")
 
             # Step 1: Get history changes
-            history_response = self.service.users().history().list(userId='me', startHistoryId=history_id).execute()
+            history_response = (
+                self.service.users()
+                .history()
+                .list(userId="me", startHistoryId=history_id)
+                .execute()
+            )
 
-            if 'history' not in history_response:
-                logger.info('No new history found')
+            if "history" not in history_response:
+                logger.info("No new history found")
                 return []
 
             # Step 2: Collect unique message IDs from history
             message_ids = set()
-            for record in history_response.get('history', []):
-                if 'messagesAdded' in record:
-                    for msg in record['messagesAdded']:
-                        if 'message' in msg and 'id' in msg['message']:
-                            message_ids.add(msg['message']['id'])
+            for record in history_response.get("history", []):
+                if "messagesAdded" in record:
+                    for msg in record["messagesAdded"]:
+                        if "message" in msg and "id" in msg["message"]:
+                            message_ids.add(msg["message"]["id"])
 
             if not message_ids:
-                logger.info('No new messages in history')
+                logger.info("No new messages in history")
                 return []
 
-            logger.info(f'Found {len(message_ids)} new messages in history')
+            logger.info(f"Found {len(message_ids)} new messages in history")
 
             # Step 3: Batch fetch the new messages
             email_data: list[StructuredEmail] = []
 
             def batch_callback(request_id: str, response: dict, exception: Exception):
                 if exception:
-                    logger.error(f'Error fetching message {request_id}: {exception}')
+                    logger.error(f"Error fetching message {request_id}: {exception}")
                     return
                 parsed = self._parse_message(response)
                 if parsed:
@@ -345,7 +368,11 @@ class GmailService:
 
             batch = self.service.new_batch_http_request(callback=batch_callback)
             for msg_id in message_ids:
-                batch.add(self.service.users().messages().get(userId='me', id=msg_id, format='full'))
+                batch.add(
+                    self.service.users()
+                    .messages()
+                    .get(userId="me", id=msg_id, format="full")
+                )
 
             batch.execute()
 
@@ -353,7 +380,7 @@ class GmailService:
 
         except HttpError as e:
             if e.resp.status == 404:
-                logger.warning(f'History ID {history_id} not found (too old)')
+                logger.warning(f"History ID {history_id} not found (too old)")
                 return []
             raise
 
@@ -388,7 +415,13 @@ class GmailWatchService:
         watch_service.unsubscribe()
     """
 
-    def __init__(self, access_token: str, project_id: str, timeout: float = 10.0, trace_context: Optional[str] = None):
+    def __init__(
+        self,
+        access_token: str,
+        project_id: str,
+        timeout: float = 10.0,
+        trace_context: Optional[str] = None,
+    ):
         """
         Initialize the Gmail Watch service.
 
@@ -402,15 +435,20 @@ class GmailWatchService:
         self.project_id = project_id
         self.trace_context = trace_context
 
-        socket.setdefaulttimeout(timeout)
-
+        http = httplib2.Http(timeout=timeout)
         creds = Credentials(token=access_token)
-        self.service = build('gmail', 'v1', credentials=creds)
+        self.service = build("gmail", "v1", credentials=creds, http=http)
 
-        logger.info('GmailWatchService initialized', extra={'project_id': project_id, 'trace_context': trace_context})
+        logger.info(
+            "GmailWatchService initialized",
+            extra={"project_id": project_id, "trace_context": trace_context},
+        )
 
     def subscribe(
-        self, topic_name: str, label_ids: Optional[list[str]] = None, label_filter_behavior: str = 'include'
+        self,
+        topic_name: str,
+        label_ids: Optional[list[str]] = None,
+        label_filter_behavior: str = "include",
     ) -> WatchInfo:
         """
         Subscribe user's Gmail to push notifications.
@@ -434,33 +472,40 @@ class GmailWatchService:
             HttpError: If subscription fails (usually permissions issue)
         """
         if label_ids is None:
-            label_ids = ['INBOX']
+            label_ids = ["INBOX"]
 
-        full_topic_name = f'projects/{self.project_id}/topics/{topic_name}'
+        full_topic_name = f"projects/{self.project_id}/topics/{topic_name}"
 
         logger.info(
-            f'Subscribing to Gmail push notifications', extra={'topic': full_topic_name, 'label_ids': label_ids}
+            f"Subscribing to Gmail push notifications",
+            extra={"topic": full_topic_name, "label_ids": label_ids},
         )
 
         try:
             response = (
                 self.service.users()
                 .watch(
-                    userId='me',
+                    userId="me",
                     body={
-                        'topicName': full_topic_name,
-                        'labelIds': label_ids,
-                        'labelFilterBehavior': label_filter_behavior,
+                        "topicName": full_topic_name,
+                        "labelIds": label_ids,
+                        "labelFilterBehavior": label_filter_behavior,
                     },
                 )
                 .execute()
             )
 
-            watch_info = WatchInfo(history_id=int(response['historyId']), expiration=int(response['expiration']))
+            watch_info = WatchInfo(
+                history_id=int(response["historyId"]),
+                expiration=int(response["expiration"]),
+            )
 
             logger.info(
-                'Gmail watch established',
-                extra={'history_id': watch_info.history_id, 'expires': watch_info.expiration_datetime.isoformat()},
+                "Gmail watch established",
+                extra={
+                    "history_id": watch_info.history_id,
+                    "expires": watch_info.expiration_datetime.isoformat(),
+                },
             )
 
             return watch_info
@@ -468,8 +513,8 @@ class GmailWatchService:
         except HttpError as e:
             if e.resp.status == 403:
                 logger.error(
-                    'Permission denied. Grant Pub/Sub publish permission: '
-                    'gcloud pubsub topics add-iam-policy-binding <topic> '
+                    "Permission denied. Grant Pub/Sub publish permission: "
+                    "gcloud pubsub topics add-iam-policy-binding <topic> "
                     "--member='serviceAccount:gmail-api-push@system.gserviceaccount.com' "
                     "--role='roles/pubsub.publisher'"
                 )
@@ -481,14 +526,14 @@ class GmailWatchService:
 
         Call this when user disconnects Gmail or deletes account.
         """
-        logger.info('Stopping Gmail watch', extra={'trace_context': self.trace_context})
+        logger.info("Stopping Gmail watch", extra={"trace_context": self.trace_context})
 
         try:
-            self.service.users().stop(userId='me').execute()
-            logger.info('Gmail watch stopped successfully')
+            self.service.users().stop(userId="me").execute()
+            logger.info("Gmail watch stopped successfully")
         except HttpError as e:
             if e.resp.status == 400:
-                logger.info('No active watch to stop')
+                logger.info("No active watch to stop")
             else:
                 raise
 
@@ -500,15 +545,15 @@ class GmailWatchService:
             Dict with emailAddress, messagesTotal, threadsTotal, historyId
         """
         try:
-            profile = self.service.users().getProfile(userId='me').execute()
+            profile = self.service.users().getProfile(userId="me").execute()
             return {
-                'email_address': profile.get('emailAddress'),
-                'messages_total': profile.get('messagesTotal', 0),
-                'threads_total': profile.get('threadsTotal', 0),
-                'history_id': int(profile.get('historyId', 0)),
+                "email_address": profile.get("emailAddress"),
+                "messages_total": profile.get("messagesTotal", 0),
+                "threads_total": profile.get("threadsTotal", 0),
+                "history_id": int(profile.get("historyId", 0)),
             }
         except HttpError as e:
-            logger.error(f'Failed to get Gmail profile: {e}')
+            logger.error(f"Failed to get Gmail profile: {e}")
             raise
 
 
@@ -540,34 +585,34 @@ def parse_auth_results(auth_results: str) -> EmailAuthenticationStatus:
 
     # SPF (Sender Policy Framework)
     # Checks if the sending server's IP is authorized to send for the domain
-    if 'spf=pass' in auth_lower:
-        result.spf = 'PASS'
-    elif 'spf=fail' in auth_lower or 'spf=softfail' in auth_lower:
-        result.spf = 'FAIL'
-    elif 'spf=neutral' in auth_lower:
-        result.spf = 'NEUTRAL'
-    elif 'spf=none' in auth_lower:
-        result.spf = 'NONE'
+    if "spf=pass" in auth_lower:
+        result.spf = "PASS"
+    elif "spf=fail" in auth_lower or "spf=softfail" in auth_lower:
+        result.spf = "FAIL"
+    elif "spf=neutral" in auth_lower:
+        result.spf = "NEUTRAL"
+    elif "spf=none" in auth_lower:
+        result.spf = "NONE"
 
     # DKIM (DomainKeys Identified Mail)
     # Cryptographic signature to verify email wasn't tampered with
-    if 'dkim=pass' in auth_lower:
-        result.dkim = 'PASS'
-    elif 'dkim=fail' in auth_lower:
-        result.dkim = 'FAIL'
-    elif 'dkim=neutral' in auth_lower:
-        result.dkim = 'NEUTRAL'
-    elif 'dkim=none' in auth_lower:
-        result.dkim = 'NONE'
+    if "dkim=pass" in auth_lower:
+        result.dkim = "PASS"
+    elif "dkim=fail" in auth_lower:
+        result.dkim = "FAIL"
+    elif "dkim=neutral" in auth_lower:
+        result.dkim = "NEUTRAL"
+    elif "dkim=none" in auth_lower:
+        result.dkim = "NONE"
 
     # DMARC (Domain-based Message Authentication)
     # Policy layer that combines SPF and DKIM with domain alignment
-    if 'dmarc=pass' in auth_lower:
-        result.dmarc = 'PASS'
-    elif 'dmarc=fail' in auth_lower:
-        result.dmarc = 'FAIL'
-    elif 'dmarc=none' in auth_lower:
-        result.dmarc = 'NONE'
+    if "dmarc=pass" in auth_lower:
+        result.dmarc = "PASS"
+    elif "dmarc=fail" in auth_lower:
+        result.dmarc = "FAIL"
+    elif "dmarc=none" in auth_lower:
+        result.dmarc = "NONE"
 
     return result
 
@@ -592,14 +637,14 @@ def extract_sender_ip(received_headers: list[str]) -> Optional[str]:
         IP address string or None if not found
     """
     # IPv4 pattern in square brackets (common format)
-    ipv4_pattern = re.compile(r'\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]')
+    ipv4_pattern = re.compile(r"\[(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\]")
 
     for received in reversed(received_headers):
         match = ipv4_pattern.search(received)
         if match:
             ip = match.group(1)
             # Skip private/local IPs as they're not the actual sender
-            if not ip.startswith(('10.', '192.168.', '127.')):
+            if not ip.startswith(("10.", "192.168.", "127.")):
                 return ip
 
     return None
@@ -619,16 +664,16 @@ def decode_base64url(data: str) -> str:
         Decoded UTF-8 string, or empty string on error
     """
     if not data:
-        return ''
+        return ""
 
     try:
         # Add padding to make length a multiple of 4
-        padding = '=' * (-len(data) % 4)
+        padding = "=" * (-len(data) % 4)
         decoded = base64.urlsafe_b64decode(data + padding)
-        return decoded.decode('utf-8', errors='replace')
+        return decoded.decode("utf-8", errors="replace")
     except Exception as e:
-        logger.debug(f'Base64 decode failed: {e}')
-        return ''
+        logger.debug(f"Base64 decode failed: {e}")
+        return ""
 
 
 def parse_email_date(date_str: str) -> Optional[datetime]:
@@ -684,7 +729,7 @@ def extract_urls(text: str) -> list[str]:
     cleaned = []
     for url in urls:
         # Remove trailing punctuation that's likely not part of the URL
-        url = url.rstrip('.,;:!?)>')
+        url = url.rstrip(".,;:!?)>")
         if url:
             cleaned.append(url)
 
@@ -747,9 +792,9 @@ async def setup_gmail_push_for_user(
     watch_info = watch_service.subscribe(topic_name=topic_name, label_ids=label_ids)
 
     return {
-        'email_address': profile['email_address'],
-        'history_id': watch_info.history_id,
-        'expiration': watch_info.expiration,
-        'expiration_datetime': watch_info.expiration_datetime.isoformat(),
-        'expires_soon': watch_info.expires_soon,
+        "email_address": profile["email_address"],
+        "history_id": watch_info.history_id,
+        "expiration": watch_info.expiration,
+        "expiration_datetime": watch_info.expiration_datetime.isoformat(),
+        "expires_soon": watch_info.expires_soon,
     }

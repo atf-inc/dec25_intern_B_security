@@ -51,8 +51,20 @@ def _extract_bearer_token(authorization: str | None) -> str:
     """Extract token from Authorization header."""
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authorization header missing Bearer token")
-    print(authorization.split(" ", 1)[1])
     return authorization.split(" ", 1)[1]
+
+
+def _mask_email(email: str) -> str:
+    """Mask email address for logging to protect PII."""
+    if not email or "@" not in email:
+        return "********"
+    try:
+        local, domain = email.rsplit("@", 1)
+        if len(local) > 1:
+            return f"{local[0]}****@{domain}"
+        return f"****@{domain}"
+    except Exception:
+        return "********"
 
 
 async def get_current_user(
@@ -73,7 +85,7 @@ async def get_current_user(
         # Auto-provision new user on first login
         email = payload.get("email", "unknown")
         name = payload.get("name")
-        logger.info(f"Auto-provisioning new user: {email} (Google ID: {google_id})")
+        logger.info(f"Auto-provisioning new user: {_mask_email(email)} (Google ID: {google_id})")
         
         user = User(
             google_id=google_id,
@@ -84,11 +96,11 @@ async def get_current_user(
         try:
             await session.commit()
             await session.refresh(user)
-            logger.info(f"Created new user: {email} (id: {user.id})")
+            logger.info(f"Created new user: {_mask_email(email)} (id: {user.id})")
         except IntegrityError:
             await session.rollback()
             # Race condition: user created by another request concurrently
-            logger.warning(f"User {email} already exists (race condition handled), fetching existing user.")
+            logger.warning(f"User {_mask_email(email)} already exists (race condition handled), fetching existing user.")
             result = await session.exec(select(User).where(User.google_id == google_id))
             user = result.first()
 
