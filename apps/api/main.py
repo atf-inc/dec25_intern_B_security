@@ -22,8 +22,8 @@ from sqlmodel import SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
-from database import get_session, init_db
-from models import EmailEvent, EmailStatus, RiskTier, ThreatCategory, User
+from packages.shared.database import get_session, init_db
+from packages.shared.models import EmailEvent, EmailStatus, RiskTier, ThreatCategory, User
 
 load_dotenv()
 
@@ -304,21 +304,12 @@ def fetch_gmail_messages(access_token: str, limit: int = 20) -> list[dict]:
             except Exception as e:
                 logger.warning(f"Failed to parse message in batch callback: {e}")
 
-        # Process in smaller batches to avoid rate limits (429 Too Many Concurrent Requests)
-        # Gmail free tier often limits concurrent requests.
-        batch_size = 5
-        for i in range(0, len(messages), batch_size):
-            batch = service.new_batch_http_request(callback=callback)
-            chunk = messages[i : i + batch_size]
-            
-            for msg in chunk:
-                batch.add(service.users().messages().get(userId="me", id=msg["id"], format="full"))
-            
-            try:
-                batch.execute()
-            except Exception as e:
-                logger.warning(f"Batch execution failed for chunk {i}: {e}")
-                continue
+        # Use batch request for better performance
+        batch = service.new_batch_http_request(callback=callback)
+        for msg in messages:
+            batch.add(service.users().messages().get(userId="me", id=msg["id"], format="full"))
+        
+        batch.execute()
             
         return email_data
     except Exception as e:
