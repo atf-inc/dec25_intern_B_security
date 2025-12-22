@@ -1,7 +1,8 @@
+import asyncio
 import logging
+import os
 import uuid
 from typing import Optional
-import os
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlmodel import select
@@ -17,7 +18,6 @@ from packages.shared.models import User, EmailEvent, EmailRead
 from packages.shared.queue import (
     get_redis_client,
     EMAIL_INTENT_QUEUE,
-    EMAIL_ANALYSIS_QUEUE,
 )
 from packages.shared.types import BackgroundSyncRequest
 
@@ -105,9 +105,10 @@ async def sync_emails(
         if count > 0:
             await session.commit()
 
-            # Push to analysis queue
+            # Push new emails to Intent worker queue for analysis
             redis = await get_redis_client()
-            await redis.rpush(EMAIL_ANALYSIS_QUEUE, *new_email_ids)
+            await redis.rpush(EMAIL_INTENT_QUEUE, *new_email_ids)
+            logger.info(f"Pushed {count} new emails to Intent worker queue")
 
         return {
             "status": "synced",
