@@ -5,7 +5,6 @@ import Link from "next/link"
 import { Shield, Mail, Search, Zap, Lock, Bot, CheckCircle, AlertTriangle, XCircle } from "lucide-react"
 import gsap from "gsap"
 import { ScrollToPlugin } from "gsap/ScrollToPlugin"
-import { BackgroundLines } from "@/components/ui/background-lines"
 
 // Register GSAP plugin
 if (typeof window !== "undefined") {
@@ -187,9 +186,9 @@ export function LandingPage() {
             </nav>
 
             {/* Hero Section */}
-            <BackgroundLines className="pt-32 pb-24 px-6">
-                {/* Subtle gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-white/40 to-transparent pointer-events-none z-0" />
+            <section className="pt-32 pb-24 px-6 relative overflow-hidden">
+                {/* Subtle gradient background */}
+                <div className="absolute inset-0 bg-gradient-to-b from-gray-50/50 to-transparent pointer-events-none" />
 
                 <div className="max-w-4xl mx-auto text-center relative z-10">
                     {/* Hand-drawn Icon */}
@@ -297,7 +296,7 @@ export function LandingPage() {
                         </div>
                     </div>
                 </div>
-            </BackgroundLines>
+            </section>
 
             {/* Social Proof / Testimonials */}
             <section id="testimonials" className="py-24 px-6 bg-gradient-to-b from-gray-50 to-white">
