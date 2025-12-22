@@ -6,7 +6,7 @@
   --landing-text: #1A1A1A;
   --landing-text-secondary: #6B7280;
   --landing-border: #E5E5E5;
-  
+
   /* Risk Score Pills */
   --pill-safe-bg: #E6F4EA;
   --pill-safe-text: #137333;
@@ -14,7 +14,7 @@
   --pill-cautious-text: #7C4A03;
   --pill-threat-bg: #FCE8E6;
   --pill-threat-text: #C5221F;
-  
+
   /* Feature badge */
   --badge-bg: #F3F4F6;
   --badge-text: #374151;
@@ -115,7 +115,7 @@
   background: #FFFFFF;
   border: 1px solid var(--landing-border);
   border-radius: 16px;
-  box-shadow: 
+  box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.05),
     0 10px 15px -3px rgba(0, 0, 0, 0.05),
     0 20px 25px -5px rgba(0, 0, 0, 0.03);
@@ -131,6 +131,28 @@
   font-weight: 500;
   color: var(--landing-text);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Enhanced floating annotation - more polished */
+.floating-annotation-enhanced {
+  background: #FFFFFF;
+  border: 1px solid var(--landing-border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--landing-text);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.05),
+    0 10px 15px -3px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.floating-annotation-enhanced:hover {
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 20px 25px -5px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
 }
 
 /* Testimonial cards */
@@ -178,9 +200,12 @@
 
 /* Animations */
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translateY(0px);
   }
+
   50% {
     transform: translateY(-8px);
   }
@@ -195,6 +220,7 @@
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);

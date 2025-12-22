@@ -252,23 +252,48 @@ export function LandingPage() {
                         </div>
                     </div>
 
-                    {/* Floating Annotations */}
-                    <div className="absolute -right-4 top-20 hidden lg:block animate-float">
-                        <div className="floating-annotation flex items-center gap-2">
-                            <CheckCircle className="h-4 w-4 text-green-600" />
-                            SPF Verified
+                    {/* Floating Annotations - Improved positioning and styling */}
+                    {/* SPF Verified - Top right, connected to first email */}
+                    <div className="absolute right-0 top-16 hidden lg:flex items-center animate-float">
+                        <div className="w-8 h-px bg-gray-200"></div>
+                        <div className="floating-annotation-enhanced flex items-center gap-2 shadow-lg">
+                            <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center">
+                                <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-800">SPF Verified</span>
                         </div>
                     </div>
-                    <div className="absolute -left-4 top-40 hidden lg:block animate-float" style={{ animationDelay: '1s' }}>
-                        <div className="floating-annotation flex items-center gap-2">
-                            <Lock className="h-4 w-4 text-blue-600" />
-                            Sandbox Active
+
+                    {/* Sandbox Active - Left side, near sidebar */}
+                    <div className="absolute -left-2 top-32 hidden lg:flex items-center animate-float" style={{ animationDelay: '1s' }}>
+                        <div className="floating-annotation-enhanced flex items-center gap-2 shadow-lg">
+                            <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
+                                <Lock className="h-3.5 w-3.5 text-blue-600" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-800">Sandbox Active</span>
+                        </div>
+                        <div className="w-8 h-px bg-gray-200"></div>
+                    </div>
+
+                    {/* AI Scanning - Right side, mid-section */}
+                    <div className="absolute right-0 top-48 hidden lg:flex items-center animate-float" style={{ animationDelay: '0.5s' }}>
+                        <div className="w-8 h-px bg-gray-200"></div>
+                        <div className="floating-annotation-enhanced flex items-center gap-2 shadow-lg">
+                            <div className="w-6 h-6 rounded-full bg-purple-100 flex items-center justify-center">
+                                <Zap className="h-3.5 w-3.5 text-purple-600" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-800">AI Scanning</span>
                         </div>
                     </div>
-                    <div className="absolute -right-4 bottom-20 hidden lg:block animate-float" style={{ animationDelay: '2s' }}>
-                        <div className="floating-annotation flex items-center gap-2">
-                            <Zap className="h-4 w-4 text-purple-600" />
-                            AI Scanning
+
+                    {/* DKIM Verified - Bottom right */}
+                    <div className="absolute right-4 bottom-8 hidden lg:flex items-center animate-float" style={{ animationDelay: '1.5s' }}>
+                        <div className="w-6 h-px bg-gray-200"></div>
+                        <div className="floating-annotation-enhanced flex items-center gap-2 shadow-lg">
+                            <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+                                <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                            </div>
+                            <span className="text-sm font-medium text-gray-800">DKIM Pass</span>
                         </div>
                     </div>
                 </div>
