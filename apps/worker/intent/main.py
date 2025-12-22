@@ -255,9 +255,12 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
 
     except Exception as e:
         print(f"Error in process_email: {e}")
-        email.status = EmailStatus.FAILED
-        session.add(email)
-        await session.commit()
+        try:
+            email.status = EmailStatus.FAILED
+            session.add(email)
+            await session.commit()
+        except Exception as commit_err:
+            print(f"Failed to persist FAILED status: {commit_err}")
         return False
 
 
