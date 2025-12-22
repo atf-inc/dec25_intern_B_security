@@ -209,51 +209,76 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
 
 
 async def run_loop() -> None:
-    """Main worker loop that pops emails from Redis queue and processes them.
-    
-    Uses BLPOP to block until an email ID is available.
-    """
+    """Main worker loop using Redis Streams Consumer Groups."""
     await init_db()
     redis = await get_redis_client()
-    print(f"Worker started. Listening on {EMAIL_INTENT_QUEUE}...")
+
+    group_name = "intent_workers"
+    consumer_name = f"worker-{random.randint(1000, 9999)}"
+
+    # Create consumer group if it doesn't exist
+    try:
+        await redis.xgroup_create(EMAIL_INTENT_QUEUE, group_name, id="0", mkstream=True)
+        print(f"Consumer group {group_name} created.")
+    except Exception as e:
+        if "BUSYGROUP" not in str(e):
+            print(f"Error creating consumer group: {e}")
+
+    print(f"Worker {consumer_name} started. Listening on {EMAIL_INTENT_QUEUE}...")
 
     while True:
         try:
-            # Block until an item is available
-            # blpop returns (queue_name, element) or None if timeout
-            result = await redis.blpop(EMAIL_INTENT_QUEUE, timeout=5)
-            
-            if not result:
+            # Read from group
+            # Count=1, block=5000ms
+            streams = await redis.xreadgroup(
+                group_name,
+                consumer_name,
+                {EMAIL_INTENT_QUEUE: ">"},
+                count=1,
+                block=5000,
+            )
+
+            if not streams:
                 continue
-                
-            queue_name, email_id_str = result
-            
-            # Process the email in a fresh session
-            async for session in get_session():
-                try:
-                    # Find the email
-                    query = select(EmailEvent).where(EmailEvent.id == email_id_str)
-                    result = await session.exec(query)
-                    email = result.first()
-                    
-                    if not email:
-                        print(f"Email {email_id_str} not found in DB.")
-                        break # Exit session
-                    
-                    if email.status != EmailStatus.PENDING:
-                        print(f"Email {email_id_str} is not PENDING (status={email.status}). Skipping.")
+
+            for stream_name, messages in streams:
+                for message_id, payload in messages:
+                    email_id_str = payload.get("email_id")
+                    payload_subject = payload.get("subject")
+                    payload_body = payload.get("body")
+
+                    if not email_id_str:
+                        print(f"Invalid payload in message {message_id}")
+                        await redis.xack(EMAIL_INTENT_QUEUE, group_name, message_id)
+                        continue
+
+                    print(f"Processing message {message_id} (Email ID: {email_id_str})")
+
+                    processed_successfully = False
+                    async for session in get_session():
+                        try:
+                            query = select(EmailEvent).where(
+                                EmailEvent.id == email_id_str
+                            )
+                            result = await session.exec(query)
+                            email = result.first()
+
+                            if not email:
+                                print(f"Email {email_id_str} not found.")
+                                break
+
+                            processed_successfully = await process_email(
+                                session, email, payload_subject, payload_body
+                            )
+                        except Exception as inner_e:
+                            print(f"Error processing {email_id_str}: {inner_e}")
                         break
-                        
-                    print(f"Processing email ID: {email_id_str}")
-                    await process_email(session, email)
-                    
-                except Exception as inner_e:
-                    print(f"Error processing email {email_id_str}: {inner_e}")
-                
-                break # Exit session context manager
-                    
-        except Exception as e:  # noqa: BLE001
-            # Log error but continue running
+
+                    if processed_successfully:
+                        await redis.xack(EMAIL_INTENT_QUEUE, group_name, message_id)
+                        print(f"Acknowledged message {message_id}")
+
+        except Exception as e:
             print(f"Worker loop error: {e}")
             await asyncio.sleep(1)
 
@@ -288,6 +313,7 @@ def main() -> None:
     port = int(os.getenv("PORT", "8080"))
     # Run uvicorn server
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=port)
 
 
