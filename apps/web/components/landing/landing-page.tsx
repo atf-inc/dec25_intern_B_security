@@ -135,6 +135,14 @@ export function LandingPage() {
                         <Link href="#features" className="landing-nav-link">Product</Link>
                         <Link href="#security" className="landing-nav-link">Security</Link>
                         <Link href="#testimonials" className="landing-nav-link">Reviews</Link>
+                        <Link
+                            href="https://deepwiki.com/atf-inc/dec25_intern_B_security/1-overview"
+                            className="landing-nav-link"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            Docs
+                        </Link>
                     </div>
 
                     {/* CTA */}
