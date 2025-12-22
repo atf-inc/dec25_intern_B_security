@@ -85,6 +85,10 @@ class EmailEvent(SQLModel, table=True):
     )
     analysis_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
+    # Sandbox Analysis Fields
+    sandboxed: Optional[bool] = Field(default=False)
+    sandbox_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
     # Intent Classification Fields
     intent: Optional[str] = Field(default=None)
     intent_confidence: Optional[float] = Field(default=None)
@@ -127,6 +131,10 @@ class EmailRead(SQLModel):
     risk_score: Optional[int] = None
     risk_tier: Optional[RiskTier] = None
     analysis_result: Optional[dict] = None
+
+    # Sandbox Analysis
+    sandboxed: Optional[bool] = None
+    sandbox_result: Optional[dict] = None
 
     # Intent Classification
     intent: Optional[str] = None
