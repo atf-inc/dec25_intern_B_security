@@ -77,6 +77,11 @@ class EmailEvent(SQLModel, table=True):
     )
     analysis_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
+    # Intent Classification Fields
+    intent: Optional[str] = Field(default=None)
+    intent_confidence: Optional[float] = Field(default=None)
+    intent_processed_at: Optional[datetime] = Field(default=None)
+
     # Timestamps
     created_at: datetime = Field(
         default_factory=utc_now,
@@ -113,6 +118,11 @@ class EmailRead(SQLModel):
     risk_score: Optional[int] = None
     risk_tier: Optional[RiskTier] = None
     analysis_result: Optional[dict] = None
+
+    # Intent Classification
+    intent: Optional[str] = None
+    intent_confidence: Optional[float] = None
+    intent_processed_at: Optional[datetime] = None
 
 
 class UserRead(SQLModel):
