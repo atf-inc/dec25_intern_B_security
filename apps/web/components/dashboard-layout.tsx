@@ -21,7 +21,7 @@ import { useSession, signOut } from "next-auth/react"
 import { syncEmails } from "@/lib/api"
 
 const navigation = [
-  { name: "Overview", href: "/", icon: LayoutDashboard },
+  { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
   { name: "Emails", href: "/emails", icon: Mail },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
@@ -40,7 +40,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Trigger background sync immediately when session is ready
   useEffect(() => {
     if (session?.accessToken && session?.idToken) {
-      syncEmails(session.idToken, session.accessToken).catch((err) => 
+      syncEmails(session.idToken, session.accessToken).catch((err) =>
         console.error("Background sync failed:", err)
       )
     }

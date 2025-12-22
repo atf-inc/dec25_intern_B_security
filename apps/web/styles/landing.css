@@ -1,0 +1,218 @@
+/* MailShieldAI Landing Page Styles */
+
+/* Light theme for landing page */
+.landing {
+  --landing-bg: #FFFFFF;
+  --landing-text: #1A1A1A;
+  --landing-text-secondary: #6B7280;
+  --landing-border: #E5E5E5;
+  
+  /* Risk Score Pills */
+  --pill-safe-bg: #E6F4EA;
+  --pill-safe-text: #137333;
+  --pill-cautious-bg: #FEF7E0;
+  --pill-cautious-text: #7C4A03;
+  --pill-threat-bg: #FCE8E6;
+  --pill-threat-text: #C5221F;
+  
+  /* Feature badge */
+  --badge-bg: #F3F4F6;
+  --badge-text: #374151;
+}
+
+/* Landing page base */
+.landing {
+  background-color: var(--landing-bg);
+  color: var(--landing-text);
+  min-height: 100vh;
+}
+
+/* Typography */
+.landing-headline {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #000000;
+}
+
+.landing-subheadline {
+  color: var(--landing-text-secondary);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* Navigation */
+.landing-nav {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid var(--landing-border);
+}
+
+.landing-nav-link {
+  color: var(--landing-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  transition: color 0.2s ease;
+}
+
+.landing-nav-link:hover {
+  color: var(--landing-text);
+}
+
+/* CTA Buttons */
+.landing-cta-primary {
+  background-color: #000000;
+  color: #FFFFFF;
+  font-weight: 500;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.landing-cta-primary:hover {
+  background-color: #1a1a1a;
+  transform: translateY(-1px);
+}
+
+/* Risk Score Pills */
+.pill {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pill-safe {
+  background-color: var(--pill-safe-bg);
+  color: var(--pill-safe-text);
+}
+
+.pill-cautious {
+  background-color: var(--pill-cautious-bg);
+  color: var(--pill-cautious-text);
+}
+
+.pill-threat {
+  background-color: var(--pill-threat-bg);
+  color: var(--pill-threat-text);
+}
+
+/* Feature badge */
+.feature-badge {
+  background-color: var(--badge-bg);
+  color: var(--badge-text);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Email mockup */
+.email-mockup {
+  background: #FFFFFF;
+  border: 1px solid var(--landing-border);
+  border-radius: 16px;
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.05),
+    0 10px 15px -3px rgba(0, 0, 0, 0.05),
+    0 20px 25px -5px rgba(0, 0, 0, 0.03);
+}
+
+/* Floating annotation */
+.floating-annotation {
+  background: #FFFFFF;
+  border: 1px solid var(--landing-border);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--landing-text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Testimonial cards */
+.testimonial-card {
+  background: #FFFFFF;
+  border: 1px solid var(--landing-border);
+  border-radius: 12px;
+  padding: 20px;
+  transition: box-shadow 0.2s ease;
+}
+
+.testimonial-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Feature bento grid */
+.feature-card {
+  background: #FFFFFF;
+  border: 1px solid var(--landing-border);
+  border-radius: 16px;
+  padding: 24px;
+  transition: all 0.2s ease;
+}
+
+.feature-card:hover {
+  border-color: #D1D5DB;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* Hand-drawn icon style */
+.icon-hand-drawn {
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Glassmorphism effect for dropdowns */
+.glass-dropdown {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--landing-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+/* Animations */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
+}
+
+.animation-delay-100 {
+  animation-delay: 100ms;
+}
+
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-300 {
+  animation-delay: 300ms;
+}
