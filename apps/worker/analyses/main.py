@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import os
 import random
 import uuid
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import google.auth
+import httpx
 from googleapiclient.discovery import build
+
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from pythonjsonlogger import json as jsonlogger
@@ -28,6 +31,11 @@ formatter = jsonlogger.JsonFormatter(fmt="%(asctime)s %(levelname)s %(message)s"
 logHandler.setFormatter(formatter)
 logger.addHandler(logHandler)
 logger.setLevel(logging.INFO)
+
+# --- Configuration ---
+HA_API_KEY = os.getenv("HYBRID_ANALYSIS_API_KEY")
+USE_REAL_SANDBOX = os.getenv("USE_REAL_SANDBOX", "false").lower() == "true"
+HA_API_URL = "https://hybrid-analysis.com/api/v2"
 
 
 def get_gmail_service() -> Any:
@@ -72,6 +80,192 @@ async def fetch_attachment_async(message_id: str, attachment_id: str) -> bytes |
     return await loop.run_in_executor(
         None, fetch_attachment_from_gmail, message_id, attachment_id
     )
+
+
+async def submit_to_hybrid_analysis(
+    file_content: Optional[bytes] = None,
+    filename: Optional[str] = None,
+    url: Optional[str] = None,
+) -> Optional[str]:
+    """Submit a file or URL to Hybrid Analysis for scanning."""
+    if not HA_API_KEY:
+        logger.warning("HYBRID_ANALYSIS_API_KEY is not set. Skipping scan.")
+        return None
+
+    headers = {"api-key": HA_API_KEY, "User-Agent": "MailShieldAI/1.0"}
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            if file_content:
+                files = {"file": (filename, file_content)}
+                data = {"environment_id": "100", "allow_community_access": "true"}
+                resp = await client.post(
+                    f"{HA_API_URL}/submit/file", headers=headers, files=files, data=data
+                )
+            elif url:
+                data = {
+                    "url": url,
+                    "environment_id": "100",
+                    "allow_community_access": "true",
+                }
+                resp = await client.post(
+                    f"{HA_API_URL}/submit/url", headers=headers, data=data
+                )
+            else:
+                return None
+
+            if resp.status_code == 429:
+                logger.warning("Hybrid Analysis rate limit hit. Backing off for 60s.")
+                await asyncio.sleep(60)
+                return None
+
+            resp.raise_for_status()
+            result = resp.json()
+            job_id = result.get("job_id")
+            logger.info(f"Successfully submitted to Hybrid Analysis. Job ID: {job_id}")
+            return job_id
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP error during HA submission: {e.response.status_code} - {e.response.text}"
+            )
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during HA submission: {e}")
+
+        return None
+
+
+async def poll_ha_report(job_id: str) -> Optional[Dict[str, Any]]:
+    """Poll Hybrid Analysis for a report until it's complete or times out."""
+    if not job_id:
+        return None
+
+    headers = {"api-key": HA_API_KEY, "User-Agent": "MailShieldAI/1.0"}
+    url = f"{HA_API_URL}/report/{job_id}"
+    delays = [30, 60, 60, 60, 60, 60, 60, 60, 60, 60]  # ~10 minutes polling
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for delay in delays:
+            logger.info(f"Waiting {delay}s before polling HA job {job_id}")
+            await asyncio.sleep(delay)
+
+            try:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 404:
+                    logger.info(f"Job {job_id} not ready yet (404).")
+                    continue
+
+                resp.raise_for_status()
+                report = resp.json()
+
+                if report.get("state") == "SUCCESS":
+                    logger.info(f"HA report for job {job_id} is complete.")
+                    return report
+                else:
+                    logger.info(
+                        f"HA report for job {job_id} not yet complete. State: {report.get('state')}"
+                    )
+
+            except httpx.HTTPStatusError as e:
+                logger.warning(
+                    f"HTTP error while polling for {job_id}: {e.response.status_code}"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"An unexpected error occurred while polling {job_id}: {e}"
+                )
+
+    logger.warning(f"Polling for job {job_id} timed out after ~10 minutes.")
+    return None
+
+
+def normalize_ha_report(report: Optional[Dict[str, Any]]) -> dict:
+    """Normalize the Hybrid Analysis report into a standard format."""
+    if not report:
+        return {
+            "verdict": "unknown",
+            "score": 50,
+            "details": "Sandbox analysis timed out or failed to retrieve report.",
+            "timed_out": True,
+        }
+
+    verdict_map = {
+        "malicious": "malicious",
+        "suspicious": "suspicious",
+        "no_specific_threat": "clean",
+        "whitelisted": "clean",
+    }
+
+    raw_verdict = report.get("verdict", "unknown")
+    final_verdict = verdict_map.get(raw_verdict, "unknown")
+
+    return {
+        "verdict": final_verdict,
+        "score": report.get("threat_score", 0),
+        "details": f"HA Analysis Verdict: {raw_verdict}",
+        "raw_report": report,
+        "timed_out": False,
+    }
+
+
+async def hybrid_analysis_scan(email_id: str, payload: dict) -> dict:
+    """Orchestrates fetching attachments, submitting to HA, and returning a normalized report."""
+    attachments = [
+        AttachmentMetadata.model_validate_json(att)
+        for att in payload.get("attachment_metadata", [])
+    ]
+    message_id = payload.get("message_id")
+
+    # --- Find a scannable target (attachment > URL) ---
+    target_content, target_name, target_url = None, None, None
+
+    # Prioritize risky attachments
+    if message_id:
+        for att in attachments:
+            if att.attachment_id:
+                try:
+                    target_content = await fetch_attachment_async(
+                        message_id, att.attachment_id
+                    )
+                    if target_content:
+                        target_name = att.filename
+                        logger.info(
+                            f"Prioritizing attachment for scanning: {target_name}"
+                        )
+                        break  # Scan the first attachment we can fetch
+                except Exception as e:
+                    logger.error(f"Failed to fetch attachment {att.filename}: {e}")
+
+    # Fallback to URL if no attachment was fetched
+    if not target_content:
+        urls = payload.get("extracted_urls", [])
+        if urls:
+            target_url = urls[0]
+            logger.info(f"No suitable attachment; scanning first URL: {target_url}")
+
+    if not target_content and not target_url:
+        logger.warning(f"No scannable content found for email {email_id}.")
+        return {"verdict": "clean", "score": 0, "details": "No scannable content"}
+
+    # --- Submit to Hybrid Analysis ---
+    job_id = None
+    if target_content:
+        job_id = await submit_to_hybrid_analysis(
+            file_content=target_content, filename=target_name
+        )
+    elif target_url:
+        job_id = await submit_to_hybrid_analysis(url=target_url)
+
+    # --- Poll for results and normalize ---
+    if not job_id:
+        return {
+            "verdict": "unknown",
+            "score": 50,
+            "details": "Failed to submit for analysis",
+        }
+
+    report = await poll_ha_report(job_id)
+    return normalize_ha_report(report)
 
 
 async def process_email_analysis(
