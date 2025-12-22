@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
 import { Shield, Mail, Settings, LayoutDashboard, Bell, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -37,9 +37,11 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     setMounted(true)
   }, [])
 
-  // Trigger background sync immediately when session is ready
+  // Trigger background sync ONCE when session is first ready
+  const syncedRef = useRef(false)
   useEffect(() => {
-    if (session?.accessToken && session?.idToken) {
+    if (session?.accessToken && session?.idToken && !syncedRef.current) {
+      syncedRef.current = true
       syncEmails(session.idToken, session.accessToken).catch((err) => 
         console.error("Background sync failed:", err)
       )

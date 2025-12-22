@@ -107,7 +107,8 @@ export function EmailsPage() {
     return () => {
       active = false
     }
-  }, [session, emails.length])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
 
   // Manual refresh function
   const handleRefresh = async () => {
