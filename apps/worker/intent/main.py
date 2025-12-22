@@ -14,6 +14,7 @@ from packages.shared.database import get_session, init_db
 from packages.shared.constants import EmailStatus, RiskTier
 from packages.shared.models import EmailEvent
 from packages.shared.queue import get_redis_client, EMAIL_INTENT_QUEUE
+from .taxonomy import Intent
 
 
 def classify_risk(score: int) -> RiskTier:
@@ -186,13 +187,67 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
     await session.refresh(email)
 
     try:
-        risk_score = random.randint(0, 100)
-        risk_tier = classify_risk(risk_score)
-        analysis_result = build_dummy_analysis(risk_score)
+        from datetime import datetime, timezone
+        from .graph import intent_agent
+        from .schemas import EmailIntentState
 
-        email.risk_score = risk_score
-        email.risk_tier = risk_tier
-        email.analysis_result = analysis_result
+        state = EmailIntentState(
+            subject=payload_subject or email.subject or "",
+            body=payload_body or email.body_preview or "",
+        )
+
+        # Invoke LangGraph
+        result = await intent_agent.ainvoke(state.dict())
+
+        email.intent = result["final_intent"]
+        email.intent_confidence = result["final_confidence"]
+        email.intent_processed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        # Define base risk scores for intents
+        RISK_MAPPING = {
+            Intent.PHISHING: 95,
+            Intent.MALWARE: 100,
+            Intent.BEC_FRAUD: 90,
+            Intent.SOCIAL_ENGINEERING: 85,
+            Intent.RECONNAISSANCE: 70,
+            Intent.SPAM: 40,
+            Intent.SALES: 20,
+            Intent.INVOICE: 10,
+            Intent.PAYMENT: 10,
+            Intent.MEETING_REQUEST: 5,
+            Intent.TASK_REQUEST: 15,
+            Intent.FOLLOW_UP: 5,
+            Intent.PERSONAL: 0,
+            Intent.NEWSLETTER: 5,
+            Intent.UNKNOWN: 30,
+        }
+
+        if email.intent in RISK_MAPPING.keys():
+            base_score = RISK_MAPPING.get(email.intent, 30)
+            # Adjust score based on confidence
+            # If low confidence, pull towards neutral (50), if high confidence, stay at base
+            confidence = email.intent_confidence or 0.5
+            risk_score = int(base_score * confidence + (50 * (1 - confidence)))
+
+            email.risk_score = risk_score
+            email.risk_tier = (
+                RiskTier.SAFE
+                if risk_score < 30
+                else (RiskTier.CAUTIOUS if risk_score < 80 else RiskTier.THREAT)
+            )
+
+            email.status = EmailStatus.COMPLETED
+
+            session.add(email)
+            await session.commit()
+            await session.refresh(email)
+            return True
+
+        # If intent not in mapping, still mark as completed?
+        # Or maybe it's an error?
+        # For now, let's assume if we got an intent, we are good.
+        # But if we fall through, we should return True or False.
+        # Let's save as COMPLETED without risk score update if not in mapping.
         email.status = EmailStatus.COMPLETED
         
         # Apply Gmail label based on risk tier
@@ -203,9 +258,12 @@ async def process_email(session: AsyncSession, email: EmailEvent) -> None:
         email.status = EmailStatus.FAILED
         email.analysis_result = {"error": "processing_failed"}
 
-    session.add(email)
-    await session.commit()
-    await session.refresh(email)
+    except Exception as e:
+        print(f"Error in process_email: {e}")
+        email.status = EmailStatus.FAILED
+        session.add(email)
+        await session.commit()
+        return False
 
 
 async def run_loop() -> None:
