@@ -153,27 +153,38 @@ export function LandingPage() {
             </nav>
 
             {/* Hero Section */}
-            <section className="pt-32 pb-20 px-6">
-                <div className="max-w-4xl mx-auto text-center">
+            <section className="pt-32 pb-24 px-6 relative overflow-hidden">
+                {/* Subtle gradient background */}
+                <div className="absolute inset-0 bg-gradient-to-b from-gray-50/50 to-transparent pointer-events-none" />
+
+                <div className="max-w-4xl mx-auto text-center relative z-10">
                     {/* Hand-drawn Icon */}
-                    <div className="flex justify-center mb-8 animate-fade-in-up">
-                        <ShieldIcon />
+                    <div className="flex justify-center mb-10 animate-fade-in-up">
+                        <div className="p-4 rounded-2xl bg-gray-50 border border-gray-100">
+                            <ShieldIcon />
+                        </div>
                     </div>
 
                     {/* Headline */}
-                    <h1 className="landing-headline text-5xl md:text-6xl lg:text-7xl mb-6 animate-fade-in-up animation-delay-100">
+                    <h1 className="landing-headline text-5xl md:text-6xl lg:text-7xl mb-8 animate-fade-in-up animation-delay-100 leading-tight">
                         The inbox that<br />defends itself.
                     </h1>
 
                     {/* Subheadline */}
-                    <p className="landing-subheadline text-lg md:text-xl max-w-2xl mx-auto mb-10 animate-fade-in-up animation-delay-200">
+                    <p className="landing-subheadline text-lg md:text-xl max-w-2xl mx-auto mb-12 animate-fade-in-up animation-delay-200 leading-relaxed">
                         Meet MailShieldAI: The security layer that organizes threats, verifies senders, and sandboxes links before you even click.
                     </p>
 
-                    {/* CTA Button */}
-                    <div className="animate-fade-in-up animation-delay-300">
-                        <Link href="/sign-in" className="landing-cta-primary inline-block text-base px-8 py-3">
+                    {/* CTA Buttons */}
+                    <div className="animate-fade-in-up animation-delay-300 flex flex-col sm:flex-row gap-4 justify-center items-center">
+                        <Link href="/sign-in" className="landing-cta-primary inline-block text-base px-8 py-3.5 rounded-lg font-medium">
                             Get MailShieldAI Free
+                        </Link>
+                        <Link href="#features" className="text-gray-600 hover:text-gray-900 font-medium text-sm flex items-center gap-2 transition-colors">
+                            Learn more
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
                         </Link>
                     </div>
                 </div>
