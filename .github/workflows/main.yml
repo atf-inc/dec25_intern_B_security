@@ -25,13 +25,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
       - name: Deploy and restart with PM2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
             set -e  # Exit immediately on any error
             
             DEPLOY_PATH="/home/${{ secrets.SSH_USER }}/app/MailShieldAI"
@@ -94,3 +97,8 @@ jobs:
             
             echo "=== Deployment Completed Successfully ==="
             pm2 status
+          ENDSSH
+
+      - name: Cleanup SSH Key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
