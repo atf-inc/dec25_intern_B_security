@@ -138,7 +138,7 @@ const translations = {
 // Email mockup data
 const mockEmails = [
     { sender: "Andrew, Jason", subject: "Q4 Report Review", subjectJa: "Q4レポートレビュー", risk: "safe", score: 12 },
-    { sender: "support@paypai.com", subject: "Verify your account now", subjectJa: "今すぐアカウントを確認", risk: "threat", score: 87 },
+    { sender: "support@definitely-not-paypal.com", subject: "Verify your account now", subjectJa: "今すぐアカウントを確認", risk: "threat", score: 87 },
     { sender: "Jenny Williams", subject: "Meeting tomorrow?", subjectJa: "明日の会議は？", risk: "safe", score: 8 },
     { sender: "notifications@dropbox.com", subject: "Someone shared a file", subjectJa: "ファイルが共有されました", risk: "cautious", score: 45 },
     { sender: "IT Department", subject: "Password reset required", subjectJa: "パスワードリセットが必要です", risk: "threat", score: 92 },
