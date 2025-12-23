@@ -132,7 +132,7 @@ ${JSON.stringify(emails, null, 2)}
 
         // Build conversation for Gemini
         const model = genAI.getGenerativeModel({
-            model: "gemini-3-flash-preview", 
+            model: "models/gemini-flash-latest", 
             systemInstruction: LUFFY_SYSTEM_PROMPT + "\n\n" + emailContext
         })
 
