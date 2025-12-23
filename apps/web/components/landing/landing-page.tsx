@@ -203,7 +203,7 @@ export function LandingPage() {
                     {/* Nav Links */}
                     <div className="hidden md:flex items-center gap-8">
                         <Link href="#features" className="landing-nav-link">{t.nav.product}</Link>
-                        <Link href="#security" className="landing-nav-link">{t.nav.security}</Link>
+                        <Link href="#features" className="landing-nav-link">{t.nav.security}</Link>
                         <Link href="#testimonials" className="landing-nav-link">{t.nav.reviews}</Link>
                         <Link
                             href="https://deepwiki.com/atf-inc/dec25_intern_B_security/1-overview"
