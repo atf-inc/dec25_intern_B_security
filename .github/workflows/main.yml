@@ -1,0 +1,96 @@
+name: Deploy MailShieldAI to VM
+
+on:
+  push:
+    branches:
+      - main
+  # Explicitly exclude all other branches - workflow_dispatch allows manual triggers on main only
+  workflow_dispatch:
+    branches:
+      - main
+
+# Prevent concurrent deployments - cancel in-progress runs when a new push occurs
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only run on main branch (extra safety check)
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy and restart with PM2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e  # Exit immediately on any error
+            
+            DEPLOY_PATH="/home/${{ secrets.SSH_USER }}/app/MailShieldAI"
+            REPO_URL="https://github.com/${{ github.repository }}.git"
+            APP_NAME="mailshield-api"
+            BRANCH="main"
+            
+            echo "=== Deployment Started ==="
+            echo "Repository: $REPO_URL"
+            echo "Branch: $BRANCH"
+            echo "Deploy Path: $DEPLOY_PATH"
+            echo "Commit: ${{ github.sha }}"
+            
+            # Clone repo if it doesn't exist, otherwise navigate to it
+            if [ ! -d "$DEPLOY_PATH" ]; then
+              echo "Directory not found. Cloning repository..."
+              mkdir -p "$DEPLOY_PATH"
+              git clone "$REPO_URL" "$DEPLOY_PATH"
+            fi
+            
+            cd "$DEPLOY_PATH"
+
+            # Setup Node.js via NVM
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+            nvm use || nvm install node --default || { echo "Error: Failed to use or install Node.js"; exit 1; }
+
+            # Ensure we're on the correct branch
+            git checkout "$BRANCH" || git checkout -b "$BRANCH" origin/"$BRANCH" || { echo "Error: Failed to switch to branch '$BRANCH'"; exit 1; }
+            
+            # Fetch and pull latest changes
+            echo "Fetching latest changes..."
+            git fetch origin || { echo "Error: Failed to fetch from origin"; exit 1; }
+            
+            echo "Resetting to origin/$BRANCH..."
+            git reset --hard origin/"$BRANCH" || { echo "Error: Failed to perform hard reset"; exit 1; }
+            
+            echo "Cleaning untracked files..."
+            git clean -df || { echo "Error: Failed to clean untracked files"; exit 1; }
+
+            # Install dependencies
+            echo "Installing dependencies..."
+            npm run install:all || npm install || { echo "Error: Failed to run npm install"; exit 1; }
+
+            # Ensure PM2 is installed
+            if ! which pm2 > /dev/null; then
+              echo "PM2 not found. Installing PM2 globally."
+              npm install -g pm2
+            fi
+
+            # Reload or start the application
+            if pm2 describe "$APP_NAME" > /dev/null 2>&1; then
+              echo "PM2 app $APP_NAME found. Reloading..."
+              pm2 reload "$APP_NAME" || { echo "Error: Failed to reload PM2 app $APP_NAME"; exit 1; }
+            else
+              echo "PM2 app $APP_NAME not found. Starting pm2..."
+              pm2 start npm --name "$APP_NAME" -- run start:all || { echo "Error: Failed to start PM2 app $APP_NAME"; exit 1; }
+            fi
+            
+            echo "=== Deployment Completed Successfully ==="
+            pm2 status
