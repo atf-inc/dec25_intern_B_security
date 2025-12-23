@@ -6,6 +6,7 @@ import base64
 import logging
 import re
 import socket
+import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Optional
@@ -150,13 +151,16 @@ class GmailService:
         self.timeout = timeout
         self.trace_context = trace_context
 
+        # Set socket timeout globally for httplib2
+        socket.setdefaulttimeout(self.timeout)
+
         # Build the Gmail API service
-        http = httplib2.Http(timeout=self.timeout)
+        # Note: credentials and http are mutually exclusive in build()
         if credentials:
-            self.service = build("gmail", "v1", credentials=credentials, http=http)
+            self.service = build("gmail", "v1", credentials=credentials)
         elif access_token:
             creds = Credentials(token=access_token)
-            self.service = build("gmail", "v1", credentials=creds, http=http)
+            self.service = build("gmail", "v1", credentials=creds)
         else:
             raise ValueError("Either access_token or credentials must be provided")
 
@@ -296,8 +300,23 @@ class GmailService:
                     .get(userId="me", id=msg["id"], format="full")
                 )
 
-            # Execute batch (single HTTP request for all messages!)
-            batch.execute()
+            # Execute batch with retry logic for rate limiting
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    batch.execute()
+                    break  # Success, exit retry loop
+                except HttpError as e:
+                    if e.resp.status == 429 and attempt < max_retries - 1:
+                        # Rate limited, retry with exponential backoff
+                        wait_time = 2 ** attempt  # 1s, 2s, 4s
+                        logger.warning(
+                            f"Rate limited (429), retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})"
+                        )
+                        time.sleep(wait_time)
+                    else:
+                        # Not a rate limit error, or out of retries
+                        raise
 
             logger.info(
                 f"Fetched {len(email_data)} emails successfully, {len(errors)} errors",
@@ -374,7 +393,23 @@ class GmailService:
                     .get(userId="me", id=msg_id, format="full")
                 )
 
-            batch.execute()
+            # Execute batch with retry logic for rate limiting
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    batch.execute()
+                    break  # Success, exit retry loop
+                except HttpError as e:
+                    if e.resp.status == 429 and attempt < max_retries - 1:
+                        # Rate limited, retry with exponential backoff
+                        wait_time = 2 ** attempt  # 1s, 2s, 4s
+                        logger.warning(
+                            f"Rate limited (429), retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})"
+                        )
+                        time.sleep(wait_time)
+                    else:
+                        # Not a rate limit error, or out of retries
+                        raise
 
             return email_data
 
@@ -435,9 +470,11 @@ class GmailWatchService:
         self.project_id = project_id
         self.trace_context = trace_context
 
-        http = httplib2.Http(timeout=timeout)
+        # Set socket timeout globally
+        socket.setdefaulttimeout(timeout)
+
         creds = Credentials(token=access_token)
-        self.service = build("gmail", "v1", credentials=creds, http=http)
+        self.service = build("gmail", "v1", credentials=creds)
 
         logger.info(
             "GmailWatchService initialized",

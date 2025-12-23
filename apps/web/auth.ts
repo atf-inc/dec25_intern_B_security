@@ -23,6 +23,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      // Save refresh_token to backend database
+      if (account?.refresh_token && account?.access_token) {
+        try {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/save-tokens`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: user.email,
+              google_id: account.providerAccountId,
+              name: user.name,
+              refresh_token: account.refresh_token,
+              access_token: account.access_token,
+            }),
+          })
+          
+          if (!response.ok) {
+            console.error('Failed to save tokens to backend:', await response.text())
+          }
+        } catch (error) {
+          console.error('Error saving tokens to backend:', error)
+        }
+      }
+      return true
+    },
     async jwt({ token, account }) {
       // Persist the OAuth access_token and refresh_token to the token right after signin
       if (account) {

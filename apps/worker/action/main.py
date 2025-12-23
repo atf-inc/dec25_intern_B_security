@@ -1,13 +1,13 @@
 """
 Action Agent - The Enforcer
 
-This is the third and final agent in the MailShieldAI security pipeline.
-It consumes security verdicts from the Decision Agent, applies Gmail labels,
-and uses Gemini AI as a fallback for "unknown" verdicts.
+This is the final agent in the MailShieldAI security pipeline.
+It consumes final verdicts from the Aggregator (via Redis Stream), applies Gmail labels,
+and optionally moves malicious emails to Spam.
 
 Flow:
-1. Receive UnifiedDecisionPayload from Decision Agent
-2. If verdict is "unknown", trigger Gemini AI analysis of URLs
+1. Receive Final Report from Redis Stream (FINAL_REPORT_QUEUE)
+2. Extract verdict from sandbox results
 3. Apply appropriate Gmail label (MailShield/MALICIOUS, CAUTIOUS, or SAFE)
 4. For malicious emails, optionally move to Spam folder
 5. Log action for audit trail
@@ -16,287 +16,233 @@ Author: MailShieldAI Team
 """
 
 import os
-import logging
+import json
 import asyncio
-from typing import Optional, Set, Literal
+import random
+from typing import Set, Optional
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, BackgroundTasks, status
+from fastapi import FastAPI
 from pydantic import BaseModel
-from pythonjsonlogger import jsonlogger
 import google.auth
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../..", ".."))
+from packages.shared.logger import setup_logging
+from packages.shared.queue import get_redis_client, FINAL_REPORT_QUEUE
 from gmail_labels import apply_labels, ensure_labels_exist, get_label_for_verdict
-from ai_fallback import analyze_urls, is_gemini_available
 
 load_dotenv()
 
 # --- Configuration ---
-PORT = int(os.getenv("PORT", "9001"))  # Different port from Decision Agent (8080)
+PORT = int(os.getenv("PORT", "9001"))
 MOVE_MALICIOUS_TO_SPAM = os.getenv("MOVE_MALICIOUS_TO_SPAM", "true").lower() == "true"
 
 # --- Concurrency Control ---
-# Limit concurrent Gmail/Gemini API calls to avoid rate limits
+# Limit concurrent Gmail API calls to avoid rate limits
 GMAIL_SEMAPHORE = asyncio.Semaphore(5)  # Gmail allows ~5-10 modify/sec
-GEMINI_SEMAPHORE = asyncio.Semaphore(2)  # Conservative for AI calls
 
 # --- Logging ---
-logger = logging.getLogger()
-logHandler = logging.StreamHandler()
-formatter = jsonlogger.JsonFormatter(fmt="%(asctime)s %(levelname)s %(message)s")
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
-logger.setLevel(logging.INFO)
+logger = setup_logging("action-worker")
 
 # --- State: In-memory Idempotency ---
 # Tracks message_ids that have already been processed
-# TODO: For production, use Redis/DB for cross-replica persistence
 processed_messages: Set[str] = set()
-
-
-# --- Models ---
-class SandboxResult(BaseModel):
-    """Result from sandbox analysis."""
-    verdict: Literal["malicious", "suspicious", "clean", "unknown"]
-    score: int
-    family: Optional[str] = None
-    confidence: float = 0.0
-
-
-class DecisionMetadata(BaseModel):
-    """Metadata about how the decision was made."""
-    provider: str
-    timed_out: bool = False
-    reason: Optional[str] = None
-
-
-class UnifiedDecisionPayload(BaseModel):
-    """
-    Payload received from the Decision Agent.
-    Contains the security verdict and metadata.
-    """
-    message_id: str
-    static_risk_score: int
-    sandboxed: bool
-    sandbox_result: Optional[SandboxResult] = None
-    decision_metadata: DecisionMetadata
-    # Optional: URLs for Gemini fallback (may be passed from ingest)
-    extracted_urls: Optional[list[str]] = None
-
-
-class ActionResult(BaseModel):
-    """Result of the action taken."""
-    message_id: str
-    original_verdict: str
-    final_verdict: str
-    label_applied: str
-    moved_to_spam: bool
-    ai_analysis_used: bool
-    ai_reasoning: Optional[str] = None
 
 
 # --- Gmail Service ---
 def get_gmail_service():
     """
-    Builds and returns the Gmail API service using ADC.
-    Note: Action Agent needs gmail.modify scope (not just readonly).
+    Falls back to ADC if available.
     """
-    creds, _ = google.auth.default(scopes=['https://www.googleapis.com/auth/gmail.modify'])
-    return build('gmail', 'v1', credentials=creds)
+    try:
+        creds, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/gmail.modify"]
+        )
+        return build("gmail", "v1", credentials=creds)
+    except Exception as e:
+        logger.error(f"ADC authentication failed: {e}")
+        return None
 
 
 # --- Core Processing Logic ---
-async def process_action(payload: UnifiedDecisionPayload) -> ActionResult:
+async def process_action(message_id: str, sandbox_data: Optional[dict]) -> bool:
     """
     Main processing logic for applying actions based on security verdict.
-    
-    1. Check idempotency
-    2. Determine verdict (with Gemini fallback for "unknown")
-    3. Apply Gmail labels
-    4. Return audit result
     """
-    message_id = payload.message_id
+    logger.info(f"Starting action processing for message {message_id}")
     
-    # Idempotency check
+    # STEP 1: Idempotency check
     if message_id in processed_messages:
-        logger.info(f"Message {message_id} already processed, skipping")
-        return ActionResult(
-            message_id=message_id,
-            original_verdict="skipped",
-            final_verdict="skipped",
-            label_applied="none",
-            moved_to_spam=False,
-            ai_analysis_used=False
-        )
-    
+        logger.info(f"Message {message_id}: Already processed, skipping")
+        return True
+
     processed_messages.add(message_id)
-    
-    # Determine original verdict
-    original_verdict = "clean"  # Default
-    if payload.sandbox_result:
-        original_verdict = payload.sandbox_result.verdict
-    
-    final_verdict = original_verdict
-    ai_reasoning = None
-    ai_used = False
-    
-    # Gemini fallback for unknown verdicts
-    if original_verdict == "unknown" and payload.extracted_urls:
-        logger.info(f"Triggering Gemini fallback for {message_id}")
-        async with GEMINI_SEMAPHORE:
-            ai_verdict, ai_reasoning = await analyze_urls(payload.extracted_urls)
-            final_verdict = ai_verdict
-            ai_used = True
-            logger.info(
-                f"Gemini resolved unknown -> {ai_verdict}",
-                extra={"message_id": message_id, "reason": ai_reasoning[:100] if ai_reasoning else None}
-            )
-    elif original_verdict == "unknown":
-        # No URLs to analyze, default to cautious
-        final_verdict = "suspicious"
-        ai_reasoning = "No URLs available for analysis, defaulting to cautious"
-    
+
+    # STEP 2: Determine verdict from sandbox data
+    # If no sandbox data (e.g. only Intent analysis), default to 'clean' regarding threats
+    final_verdict = "clean"
+    if sandbox_data:
+        final_verdict = sandbox_data.get("verdict", "clean")
+        # If unknown reached here, treat as suspicious
+        if final_verdict == "unknown":
+            final_verdict = "suspicious"
+
+    logger.info(
+        f"Message {message_id}: Verdict determined - {final_verdict} "
+        f"(has_sandbox_data={bool(sandbox_data)})"
+    )
+
     # Determine if we should move to spam
     move_to_spam = MOVE_MALICIOUS_TO_SPAM and final_verdict == "malicious"
-    
+
     # Apply Gmail labels
     label_applied = get_label_for_verdict(final_verdict)
-    
+
+    # STEP 3: Apply Gmail labels and actions
     try:
         async with GMAIL_SEMAPHORE:
             service = get_gmail_service()
+            if not service:
+                logger.error(f"Message {message_id}: Failed to initialize Gmail service")
+                return False
+
             success = await apply_labels(
                 service=service,
                 message_id=message_id,
                 verdict=final_verdict,
-                move_to_spam=move_to_spam
+                move_to_spam=move_to_spam,
             )
-            
+
             if not success:
-                logger.error(f"Failed to apply labels to {message_id}")
-                label_applied = "FAILED"
+                logger.error(
+                    f"Message {message_id}: Failed to apply labels - "
+                    f"verdict={final_verdict} label={label_applied}"
+                )
+                return False
+
     except Exception as e:
-        logger.error(f"Gmail labeling failed for {message_id}: {e}", exc_info=True)
-        label_applied = f"ERROR: {str(e)[:50]}"
-    
-    # Log the action for audit
+        logger.error(
+            f"Message {message_id}: Gmail labeling failed - {e}", 
+            exc_info=True
+        )
+        return False
+
+    # STEP 4: Log completion for audit trail
     logger.info(
-        "Action completed",
-        extra={
-            "message_id": message_id,
-            "original_verdict": original_verdict,
-            "final_verdict": final_verdict,
-            "label_applied": label_applied,
-            "moved_to_spam": move_to_spam,
-            "ai_used": ai_used
-        }
+        f"Message {message_id}: Action completed successfully - "
+        f"verdict={final_verdict} label={label_applied} moved_to_spam={move_to_spam}"
     )
-    
-    return ActionResult(
-        message_id=message_id,
-        original_verdict=original_verdict,
-        final_verdict=final_verdict,
-        label_applied=label_applied,
-        moved_to_spam=move_to_spam,
-        ai_analysis_used=ai_used,
-        ai_reasoning=ai_reasoning
-    )
+    return True
 
 
-async def process_action_background(payload: UnifiedDecisionPayload):
-    """Background wrapper for process_action with error handling."""
+async def run_loop() -> None:
+    """Main worker loop using Redis Streams Consumer Groups."""
+    redis = await get_redis_client()
+
+    group_name = "action_workers"
+    consumer_name = f"worker-{random.randint(1000, 9999)}"
+
     try:
-        await process_action(payload)
+        await redis.xgroup_create(FINAL_REPORT_QUEUE, group_name, id="0", mkstream=True)
+        logger.info(f"Consumer group {group_name} created.")
     except Exception as e:
-        logger.error(f"Unhandled error processing {payload.message_id}: {e}", exc_info=True)
+        if "BUSYGROUP" not in str(e):
+            logger.warning(f"Error creating consumer group: {e}")
+
+    logger.info(f"Worker {consumer_name} started. Listening on {FINAL_REPORT_QUEUE}...")
+
+    # Pre-create labels
+    try:
+        service = get_gmail_service()
+        if service:
+            await ensure_labels_exist(service)
+            logger.info("✓ MailShield labels initialized")
+    except Exception as e:
+        logger.warning(f"Could not pre-create labels: {e}")
+
+    while True:
+        try:
+            streams = await redis.xreadgroup(
+                group_name,
+                consumer_name,
+                {FINAL_REPORT_QUEUE: ">"},
+                count=1,
+                block=5000,
+            )
+
+            if not streams:
+                continue
+
+            for _, messages in streams:
+                for msg_id, payload in messages:
+                    # Payload from Aggregator: {'job_id': ..., 'message_id': ..., 'intent': ..., 'sandbox': ...}
+                    job_id = payload.get("job_id")
+                    gmail_message_id = payload.get("message_id")
+
+                    if not gmail_message_id:
+                        logger.warning(f"Missing message_id in job {job_id}")
+                        await redis.xack(FINAL_REPORT_QUEUE, group_name, msg_id)
+                        continue
+
+                    sandbox_str = payload.get("sandbox")
+                    sandbox_data = None
+                    if sandbox_str:
+                        try:
+                            sandbox_data = json.loads(sandbox_str)
+                        except:
+                            pass
+
+                    logger.info(
+                        f"Processing action for message {gmail_message_id} (Job: {job_id})"
+                    )
+
+                    success = await process_action(gmail_message_id, sandbox_data)
+
+                    if success:
+                        await redis.xack(FINAL_REPORT_QUEUE, group_name, msg_id)
+                        logger.debug(f"Acknowledged message {msg_id}")
+
+        except Exception as e:
+            logger.error(f"Worker loop error: {e}")
+            await asyncio.sleep(1)
 
 
 # --- FastAPI App ---
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager to start background tasks."""
+    # Startup
+    task = asyncio.create_task(run_loop())
+    logger.info("Action Agent background task started")
+    yield
+    # Shutdown
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
 app = FastAPI(
     title="Action Agent",
-    description="Applies Gmail labels based on security verdicts from Decision Agent",
-    version="1.0.0"
+    description="Applies Gmail labels based on final security verdicts",
+    version="2.0.0",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Initialize on startup:
-    1. Check Gemini availability
-    2. Pre-create MailShield labels (optional, handles race conditions)
-    """
-    logger.info("Starting Action Agent...")
-    
-    # Check Gemini
-    gemini_ok = await is_gemini_available()
-    if gemini_ok:
-        logger.info("✓ Gemini AI fallback is available")
-    else:
-        logger.warning("⚠ Gemini AI fallback is NOT available (check GEMINI_API_KEY)")
-    
-    # Try to pre-create labels (soft fail, will be created on-demand anyway)
-    try:
-        service = get_gmail_service()
-        await ensure_labels_exist(service)
-        logger.info("✓ MailShield labels initialized")
-    except Exception as e:
-        logger.warning(f"Could not pre-create labels (will create on-demand): {e}")
-    
-    logger.info(f"Action Agent started on port {PORT}")
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for Cloud Run."""
-    gemini_ok = await is_gemini_available()
+    """Health check endpoint."""
     return {
         "status": "ok",
         "service": "action-agent",
-        "gemini_available": gemini_ok,
-        "processed_count": len(processed_messages)
+        "processed_count": len(processed_messages),
     }
-
-
-@app.post("/execute", status_code=status.HTTP_202_ACCEPTED)
-async def execute_action(
-    payload: UnifiedDecisionPayload,
-    background_tasks: BackgroundTasks
-):
-    """
-    Execute security action based on Decision Agent verdict.
-    
-    - malicious → MailShield/MALICIOUS label + move to Spam
-    - suspicious → MailShield/CAUTIOUS label
-    - clean → MailShield/SAFE label
-    - unknown → Gemini AI analysis → appropriate action
-    """
-    logger.info(
-        "Received action request",
-        extra={
-            "message_id": payload.message_id,
-            "verdict": payload.sandbox_result.verdict if payload.sandbox_result else "none"
-        }
-    )
-    
-    # Process in background to return immediately
-    background_tasks.add_task(process_action_background, payload)
-    
-    return {
-        "status": "accepted",
-        "message_id": payload.message_id,
-        "queued": True
-    }
-
-
-@app.post("/execute-sync", status_code=status.HTTP_200_OK)
-async def execute_action_sync(payload: UnifiedDecisionPayload) -> ActionResult:
-    """
-    Synchronous version of execute for testing.
-    Returns the full action result immediately.
-    """
-    return await process_action(payload)
 
 
 @app.get("/stats")
@@ -304,10 +250,11 @@ async def get_stats():
     """Get processing statistics."""
     return {
         "processed_messages": len(processed_messages),
-        "recent_messages": list(processed_messages)[-10:]  # Last 10
+        "recent_messages": list(processed_messages)[-10:],
     }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=PORT)

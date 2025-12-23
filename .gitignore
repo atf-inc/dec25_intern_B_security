@@ -42,3 +42,4 @@ Dockerfile
 .dockerignore
 .gcloudignore
 deploy*.sh
+dump.sql

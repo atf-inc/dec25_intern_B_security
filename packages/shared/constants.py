@@ -6,6 +6,7 @@ class EmailStatus(str, enum.Enum):
     PROCESSING = "PROCESSING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    SPAM = "SPAM"  # Gmail labeled as spam
 
 
 class RiskTier(str, enum.Enum):

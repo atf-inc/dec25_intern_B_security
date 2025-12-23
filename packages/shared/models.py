@@ -22,7 +22,7 @@ def utc_now() -> datetime:
 class User(SQLModel, table=True):
     """User model - represents a single user of the application."""
 
-    __tablename__ = 'users'
+    __tablename__ = "users"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
     google_id: str = Field(index=True, unique=True)
@@ -38,10 +38,10 @@ class User(SQLModel, table=True):
 class EmailEvent(SQLModel, table=True):
     """Email event model - represents an analyzed email."""
 
-    __tablename__ = 'email_events'
+    __tablename__ = "email_events"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True, index=True)
-    user_id: uuid.UUID = Field(foreign_key='users.id', index=True)
+    user_id: uuid.UUID = Field(foreign_key="users.id", index=True)
 
     # Essential Identification Fields
     sender: str
@@ -49,13 +49,20 @@ class EmailEvent(SQLModel, table=True):
     subject: str
     message_id: Optional[str] = Field(default=None, index=True)
     body_preview: Optional[str] = None
-    received_at: Optional[datetime] = Field(default=None)  # Email timestamp from headers
+    received_at: Optional[datetime] = Field(
+        default=None
+    )  # Email timestamp from headers
 
     # Threat Intelligence Fields
     threat_category: Optional[ThreatCategory] = Field(
-        default=None, sa_column=Column(Enum(ThreatCategory, name='threat_category_enum', create_type=False))
+        default=None,
+        sa_column=Column(
+            Enum(ThreatCategory, name="threat_category_enum", create_type=False)
+        ),
     )
-    detection_reason: Optional[str] = Field(default=None)  # Brief explanation of detection
+    detection_reason: Optional[str] = Field(
+        default=None
+    )  # Brief explanation of detection
 
     # Security Metadata Fields
     spf_status: Optional[str] = Field(default=None)  # PASS, FAIL, NEUTRAL, etc.
@@ -67,15 +74,26 @@ class EmailEvent(SQLModel, table=True):
     status: EmailStatus = Field(
         default=EmailStatus.PROCESSING,
         sa_column=Column(
-            Enum(EmailStatus, name='email_status_enum', create_type=False),
-            server_default='PENDING',
+            Enum(EmailStatus, name="email_status_enum", create_type=False),
+            server_default="PROCESSING",
         ),
     )
     risk_score: Optional[int] = Field(default=None)  # 0-100
     risk_tier: Optional[RiskTier] = Field(
-        default=None, sa_column=Column(Enum(RiskTier, name='risk_tier_enum', create_type=False))
+        default=None,
+        sa_column=Column(Enum(RiskTier, name="risk_tier_enum", create_type=False)),
     )
     analysis_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+    # Sandbox Analysis Fields
+    sandboxed: Optional[bool] = Field(default=False)
+    sandbox_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+    # Intent Classification Fields
+    intent: Optional[str] = Field(default=None)
+    intent_confidence: Optional[float] = Field(default=None)
+    intent_indicators: Optional[list[str]] = Field(default=None, sa_column=Column(JSON))
+    intent_processed_at: Optional[datetime] = Field(default=None)
 
     # Timestamps
     created_at: datetime = Field(
@@ -113,6 +131,16 @@ class EmailRead(SQLModel):
     risk_score: Optional[int] = None
     risk_tier: Optional[RiskTier] = None
     analysis_result: Optional[dict] = None
+
+    # Sandbox Analysis
+    sandboxed: Optional[bool] = None
+    sandbox_result: Optional[dict] = None
+
+    # Intent Classification
+    intent: Optional[str] = None
+    intent_confidence: Optional[float] = None
+    intent_indicators: Optional[list[str]] = None
+    intent_processed_at: Optional[datetime] = None
 
 
 class UserRead(SQLModel):

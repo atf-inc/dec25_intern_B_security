@@ -12,11 +12,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from packages.shared.database import init_db
+from packages.shared.logger import setup_logging
 from apps.api.routers import auth, emails, stats
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
+# Configure logging
+logger = setup_logging("api")
 
 
 def _validate_cors_config() -> list[str]:
@@ -104,6 +106,6 @@ async def health() -> dict:
 
 
 # Register Routers
-app.include_router(auth.router, prefix='/api', tags=['auth'])
+app.include_router(auth.router, prefix='/api/auth', tags=['auth'])
 app.include_router(emails.router, prefix='/api/emails', tags=['emails'])
 app.include_router(stats.router, prefix='/api', tags=['stats'])

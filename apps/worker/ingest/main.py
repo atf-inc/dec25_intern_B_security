@@ -1,12 +1,14 @@
 import os
 import base64
 import json
-import logging
 import httpx
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from pythonjsonlogger import json as jsonlogger
+
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..', '..'))
+from packages.shared.logger import setup_logging
 
 # --- Configuration ---
 # API Service URL (Internal)
@@ -14,12 +16,7 @@ API_BASE_URL = os.getenv('API_BASE_URL', 'http://api:8000')
 PORT = int(os.getenv('PORT', '8080'))
 
 # --- Logging Setup ---
-logger = logging.getLogger()
-logHandler = logging.StreamHandler()
-formatter = jsonlogger.JsonFormatter(fmt='%(asctime)s %(levelname)s %(name)s %(message)s')
-logHandler.setFormatter(formatter)
-logger.addHandler(logHandler)
-logger.setLevel(logging.INFO)
+logger = setup_logging("ingest-worker")
 
 # --- FastAPI App ---
 app = FastAPI(title='Email Ingest Worker')

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func
@@ -5,6 +7,8 @@ from sqlmodel import select, func
 from apps.api.services.auth import get_current_user
 from packages.shared.database import get_session
 from packages.shared.models import User, EmailEvent
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -43,6 +47,11 @@ async def get_stats(
                 cautious_count = count
             elif tier.value == "THREAT":
                 threat_count = count
+    
+    logger.info(
+        'Stats requested for user %s: total=%d, safe=%d, cautious=%d, threat=%d',
+        user.id, total_emails, safe_count, cautious_count, threat_count
+    )
     
     return {
         "total_emails": total_emails,
