@@ -17,7 +17,7 @@ from apps.api.services.risk import evaluate_static_risk
 from packages.shared.constants import EmailStatus
 from packages.shared.database import get_session
 from packages.shared.models import User, EmailEvent, EmailRead
-from packages.shared.queue import get_redis_client, EMAIL_INTENT_QUEUE, EMAIL_ANALYSIS_QUEUE
+from packages.shared.queue import get_redis_client, EMAIL_INTENT_QUEUE, EMAIL_ANALYSIS_QUEUE, JOB_AGGREGATOR_QUEUE
 from packages.shared.types import BackgroundSyncRequest
 
 
@@ -42,11 +42,12 @@ def build_email_event(
     """
     Create EmailEvent and downstream queue payloads.
     """
-    new_id = uuid.uuid4()
+    job_id = uuid.uuid4()
+    job_id_str = str(job_id)
     downstream_tasks: list[tuple[str, dict]] = []
 
     email_event = EmailEvent(
-        id=new_id,
+        id=job_id,
         user_id=user_id,
         sender=email.sender,
         recipient=email.recipient,
@@ -66,7 +67,7 @@ def build_email_event(
         (
             EMAIL_INTENT_QUEUE,
             {
-                'email_id': str(new_id),
+                'job_id': job_id_str,
                 'subject': email.subject or '',
                 'body': email.body_text or email.body_html or '',
             },
@@ -81,13 +82,15 @@ def build_email_event(
             (
                 EMAIL_ANALYSIS_QUEUE,
                 {
-                    'email_id': str(new_id),
+                    'job_id': job_id_str,
                     'message_id': email.message_id,
                     'extracted_urls': json.dumps(email.extracted_urls),
                     'attachment_metadata': json.dumps([att.model_dump_json() for att in email.attachments]),
                 },
             )
         )
+
+    downstream_tasks.append((JOB_AGGREGATOR_QUEUE, {'job_id': job_id_str, 'requiresB': should_sandbox}))
 
     return email_event, downstream_tasks
 
@@ -174,9 +177,9 @@ async def sync_emails(
     # Get or create lock for this user
     if user.id not in _sync_locks:
         _sync_locks[user.id] = asyncio.Lock()
-    
+
     lock = _sync_locks[user.id]
-    
+
     # Try to acquire lock without blocking
     if lock.locked():
         logger.info('Sync already in progress for user %s', user.id)
@@ -184,7 +187,7 @@ async def sync_emails(
             status_code=status.HTTP_409_CONFLICT,
             detail='Sync already in progress',
         )
-    
+
     async with lock:
         try:
             gmail_emails = await asyncio.wait_for(

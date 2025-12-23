@@ -10,6 +10,7 @@ from redis.asyncio.client import Redis
 # Queue Names
 EMAIL_INTENT_QUEUE = 'emails:intent'
 EMAIL_ANALYSIS_QUEUE = 'emails:analysis'
+JOB_AGGREGATOR_QUEUE = 'emails:job'
 
 # Singleton state
 _redis_client: Optional[Redis] = None
