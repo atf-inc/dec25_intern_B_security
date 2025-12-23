@@ -149,7 +149,7 @@ type Language = "en" | "ja"
 // Hand-drawn style shield icon
 function ShieldIcon() {
     return (
-        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-hand-drawn">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-hand-drawn" aria-hidden="true">
             <path d="M32 8L12 16V32C12 44 20 54 32 58C44 54 52 44 52 32V16L32 8Z" stroke="#000000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             <path d="M24 32L30 38L42 26" stroke="#000000" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
@@ -265,7 +265,7 @@ export function LandingPage() {
                         </Link>
                         <Link href="#features" className="text-gray-600 hover:text-gray-900 font-medium text-sm flex items-center gap-2 transition-colors">
                             {t.hero.learnMore}
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                             </svg>
                         </Link>
@@ -277,7 +277,7 @@ export function LandingPage() {
                     <div className="email-mockup overflow-hidden">
                         {/* Mockup Header */}
                         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
-                            <div className="flex gap-1.5">
+                            <div className="flex gap-1.5" aria-hidden="true">
                                 <div className="w-3 h-3 rounded-full bg-red-400"></div>
                                 <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
                                 <div className="w-3 h-3 rounded-full bg-green-400"></div>
@@ -374,7 +374,7 @@ export function LandingPage() {
                                         </div>
                                     </div>
                                     {/* X (Twitter) icon */}
-                                    <svg className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" viewBox="0 0 24 24" fill="currentColor">
+                                    <svg className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                                     </svg>
                                 </div>
