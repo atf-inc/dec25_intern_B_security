@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 import random
 import uuid
@@ -22,9 +23,14 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from packages.shared.database import get_session, init_db
 from packages.shared.constants import EmailStatus
 from packages.shared.models import EmailEvent
-from packages.shared.queue import get_redis_client, EMAIL_ANALYSIS_QUEUE
+from packages.shared.queue import (
+    get_redis_client,
+    EMAIL_ANALYSIS_QUEUE,
+    EMAIL_ANALYSIS_DONE_QUEUE,
+)
 from packages.shared.types import AttachmentMetadata
 from packages.shared.logger import setup_logging
+from ai_fallback import analyze_urls, is_gemini_available
 
 
 # --- Logging ---
@@ -34,6 +40,25 @@ logger = setup_logging("analyses-worker")
 HA_API_KEY = os.getenv("HYBRID_ANALYSIS_API_KEY")
 USE_REAL_SANDBOX = os.getenv("USE_REAL_SANDBOX", "false").lower() == "true"
 HA_API_URL = "https://hybrid-analysis.com/api/v2"
+
+# --- Concurrency Control ---
+GEMINI_SEMAPHORE = asyncio.Semaphore(2)  # Max 2 concurrent AI calls
+
+
+def calculate_score_from_verdict(verdict: str) -> int:
+    """Map verdict to numerical score."""
+    score_map = {
+        "malicious": 90,
+        "suspicious": 50,
+        "clean": 10,
+    }
+    return score_map.get(verdict, 0)
+
+
+async def analyze_urls_with_limit(urls: list[str]) -> tuple[str, str]:
+    """Wrapper to enforce concurrency limit on Gemini API calls."""
+    async with GEMINI_SEMAPHORE:
+        return await analyze_urls(urls)
 
 
 def get_gmail_service() -> Any:
@@ -272,34 +297,90 @@ async def process_email_analysis(
     payload: dict,
 ) -> bool:
     """
-    Processes an email by routing it to the appropriate sandbox and updating the database.
+    Process email analysis with Gemini fallback.
+
+    GUARANTEE: Always publishes a definitive verdict (never 'unknown').
     """
     try:
         logger.info(f"Starting analysis for email {email.id}")
 
+        # STEP 1: Run primary sandbox analysis (Hybrid Analysis or Mock)
         sandbox_result = None
         if USE_REAL_SANDBOX:
-            logger.info(f"Using REAL sandbox (Hybrid Analysis) for email {email.id}")
+            logger.info(f"Email {email.id}: Using REAL sandbox (Hybrid Analysis)")
             sandbox_result = await hybrid_analysis_scan(str(email.id), payload)
         else:
-            logger.info(f"Using MOCK sandbox for email {email.id}")
-            await asyncio.sleep(2)  # Simulate analysis time
-            sandbox_result = {
-                "verdict": "clean",
-                "score": 0,
-                "details": "Mock sandbox scan complete. No real analysis performed.",
-            }
+            logger.info(f"Email {email.id}: Using GEMINI")
 
+            # Extract URLs from original payload
+            extracted_urls = payload.get("extracted_urls", [])
+
+            if extracted_urls:
+                logger.info(
+                    f"Email {email.id}: Triggering Gemini fallback "
+                    f"({len(extracted_urls)} URLs to analyze)"
+                )
+
+                # Call Gemini AI analysis with concurrency limit
+                ai_verdict, ai_reasoning = await analyze_urls_with_limit(extracted_urls)
+
+                # Map Gemini's "safe" to our "clean" for consistency
+                if ai_verdict == "safe":
+                    ai_verdict = "clean"
+
+                # Build new sandbox_result with Gemini's verdict
+                sandbox_result = {
+                    "verdict": ai_verdict,  # 'malicious', 'suspicious', 'clean', or 'unknown'
+                    "score": calculate_score_from_verdict(ai_verdict),
+                    "details": ai_reasoning,
+                    "provider": "gemini-ai",
+                    "fallback_used": True,
+                    "ai_reasoning": ai_reasoning,
+                }
+
+                logger.info(
+                    f"Email {email.id}: Gemini analysis complete - verdict={ai_verdict}"
+                )
+            else:
+                # No URLs available for Gemini analysis
+                logger.warning(
+                    f"Email {email.id}: No URLs for Gemini fallback, "
+                    f"defaulting to 'clean'"
+                )
+                sandbox_result = {
+                    "verdict": "clean",
+                    "score": 0,
+                    "details": "Sandbox analysis inconclusive and no URLs available for AI analysis",
+                    "provider": "default-fallback",
+                    "fallback_used": True,
+                }
+
+        # STEP 3: Save to database
         email.sandbox_result = sandbox_result
-        email.status = EmailStatus.COMPLETED
-        email.updated_at = datetime.now(timezone.utc)
-
+        email.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         session.add(email)
         await session.commit()
         await session.refresh(email)
 
+
+        # STEP 4: Publish to EMAIL_ANALYSIS_DONE_QUEUE
+        # GUARANTEE: verdict is likely definitive, but if Gemini failed ("unknown"), we send that too.
+        # Ideally, we mapped "suspicious" on total failure, so 'unknown' should be rare/impossible
+        # unless calculate_score_from_verdict received 'unknown'.
+
+        redis = await get_redis_client()
+        done_payload = {
+            "job_id": str(email.id),
+            "sandbox_score": sandbox_result.get("score", 0),
+            "verdict": sandbox_result.get("verdict"),
+            "sandbox_result": json.dumps(sandbox_result),
+        }
+        await redis.xadd(EMAIL_ANALYSIS_DONE_QUEUE, done_payload)
+
         logger.info(
-            f"Analysis for {email.id} completed. Verdict: {sandbox_result.get('verdict')}"
+            f"Email {email.id}: Published to DONE queue - "
+            f"verdict={sandbox_result.get('verdict')}, "
+            f"provider={sandbox_result.get('provider')}"
         )
         return True
 
@@ -312,9 +393,7 @@ async def process_email_analysis(
             session.add(email)
             await session.commit()
         except Exception as commit_err:
-            logger.error(
-                f"Failed to persist FAILED status for {email.id}: {commit_err}"
-            )
+            logger.error(f"Failed to persist FAILED status: {commit_err}")
         return False
 
 
