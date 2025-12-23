@@ -20,7 +20,7 @@
     "start:action": "cd apps/worker/action && source ../../../.venv/bin/activate && PYTHONPATH=../../.. uvicorn main:app --host 0.0.0.0 --port 8003",
     "start:analyses": "cd apps/worker/analyses && source ../../../.venv/bin/activate && PYTHONPATH=../../.. uvicorn main:app --host 0.0.0.0 --port 8004",
     "start:aggregator": "cd apps/worker/aggregator && source ../../../.venv/bin/activate && PYTHONPATH=../../.. uvicorn main:app --host 0.0.0.0 --port 8005",
-    "start:all": "concurrently -n api,web,ingest,intent,action,analyses,aggregator -c blue,green,yellow,magenta,cyan,red,white \"npm run start:api\" \"npm run start:web\" \"npm run start:ingest\" \"npm run start:intent\" \"npm run start:action\" \"npm run start:analyses\" \"npm run start:aggregator\"",
+    "start:all": "concurrently -n api,ingest,intent,action,analyses,aggregator -c blue,yellow,magenta,cyan,red,white \"npm run start:api\" \"npm run start:ingest\" \"npm run start:intent\" \"npm run start:action\" \"npm run start:analyses\" \"npm run start:aggregator\"",
     "env:sync": "cp .env apps/web/.env.local 2>/dev/null || true",
     "install:all": "npm install && cd apps/web && pnpm install",
     "build:web": "cd apps/web &&  pnpm build",
