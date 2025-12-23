@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import random
 from contextlib import asynccontextmanager
@@ -13,12 +14,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from packages.shared.database import get_session, init_db
 from packages.shared.constants import EmailStatus, RiskTier
 from packages.shared.models import EmailEvent
-from packages.shared.queue import get_redis_client, EMAIL_INTENT_QUEUE
+from packages.shared.queue import get_redis_client, EMAIL_INTENT_QUEUE, EMAIL_INTENT_DONE_QUEUE
 from packages.shared.logger import setup_logging
 from apps.worker.intent.taxonomy import Intent
 
 # Configure logging
-logger = setup_logging("intent-worker")
+logger = setup_logging('intent-worker')
 
 # Map intent types to base risk scores (0-100)
 RISK_MAPPING = {
@@ -29,12 +30,10 @@ RISK_MAPPING = {
     Intent.BEC_FRAUD: 95,
     Intent.RECONNAISSANCE: 75,
     Intent.SPAM: 60,
-    
     # Medium risk business emails
     Intent.INVOICE: 40,
     Intent.PAYMENT: 45,
     Intent.SALES: 30,
-    
     # Low risk legitimate emails
     Intent.MEETING_REQUEST: 15,
     Intent.TASK_REQUEST: 15,
@@ -54,29 +53,43 @@ def classify_risk(score: int) -> RiskTier:
     return RiskTier.THREAT
 
 
+async def process_email(
+    session: AsyncSession, email: EmailEvent, payload_subject: str = None, payload_body: str = None
+) -> bool:
+    """Process email for intent classification and publish results to DONE queue.
 
-
-
-async def process_email(session: AsyncSession, email: EmailEvent, payload_subject: str = None, payload_body: str = None) -> bool:
+    CRITICAL: This function NO LONGER sets status=COMPLETED.
+    The Job Aggregator Service is responsible for final status updates.
+    """
     session.add(email)
     await session.commit()
     await session.refresh(email)
+
+    logger.info(f'Starting intent processing for email_id={email.id} message_id={email.message_id}')
 
     try:
         from apps.worker.intent.graph import intent_agent
         from apps.worker.intent.schemas import EmailIntentState
 
         state = EmailIntentState(
-            subject=payload_subject or email.subject or "",
-            body=payload_body or email.body_preview or "",
+            subject=payload_subject or email.subject or '',
+            body=payload_body or email.body_preview or '',
         )
+
+        logger.debug(f'Email {email.id}: Invoking LangGraph intent agent')
 
         # Invoke LangGraph
         result = await intent_agent.ainvoke(state.dict())
 
-        final_intent = result.get("final_intent")
-        final_confidence = result.get("final_confidence")
-        final_indicators = result.get("final_indicators")
+        final_intent = result.get('final_intent')
+        final_confidence = result.get('final_confidence')
+        final_indicators = result.get('final_indicators')
+
+        logger.info(
+            f'Email {email.id}: Intent classification complete - '
+            f'intent={final_intent.value if final_intent else "UNKNOWN"} '
+            f'confidence={(final_confidence if final_confidence else 0):.2f}'
+        )
 
         # Save to DB (convert Enum to string)
         email.intent = final_intent.value if final_intent else None
@@ -94,31 +107,51 @@ async def process_email(session: AsyncSession, email: EmailEvent, payload_subjec
 
             email.risk_score = risk_score
             email.risk_tier = (
-                RiskTier.SAFE
-                if risk_score < 30
-                else (RiskTier.CAUTIOUS if risk_score < 80 else RiskTier.THREAT)
+                RiskTier.SAFE if risk_score < 30 else (RiskTier.CAUTIOUS if risk_score < 80 else RiskTier.THREAT)
             )
 
-        email.status = EmailStatus.COMPLETED
-        
+            logger.info(f'Email {email.id}: Risk calculated - score={risk_score} tier={email.risk_tier.value}')
+
+        # CRITICAL CHANGE: Do NOT set status=COMPLETED
+        # Status will be set by Job Aggregator after all workers complete
+        # email.status = EmailStatus.COMPLETED  <-- REMOVED
+
         # Commit changes to database
         session.add(email)
         await session.commit()
         await session.refresh(email)  # Refresh prevents 'greenlet_spawn' error on attribute access
-        
 
-        
+        logger.debug(f'Email {email.id}: Database updated with intent analysis results')
+
+        # CRITICAL: Publish to DONE queue for Job Aggregator
+        redis = await get_redis_client()
+        done_payload = {
+            'job_id': str(email.id),
+            'intent': email.intent or 'UNKNOWN',
+            'risk_score': email.risk_score or 0,
+            'risk_tier': email.risk_tier.value if email.risk_tier else None,
+            'intent_confidence': email.intent_confidence or 0.0,
+            'intent_indicators': json.dumps(email.intent_indicators or []),
+        }
+        await redis.xadd(EMAIL_INTENT_DONE_QUEUE, done_payload)
+
+        logger.info(
+            f'Email {email.id}: Published intent results to DONE queue '
+            f'(intent={email.intent}, risk_score={email.risk_score})'
+        )
+
         return True
-        
+
     except Exception as e:
-        logger.error(f"Error in process_email: {e}")
+        logger.error(f'Error in process_email for {email.id}: {e}', exc_info=True)
         try:
             await session.rollback()  # Rollback the failed transaction so we can use the session again
             email.status = EmailStatus.FAILED
             session.add(email)
             await session.commit()
+            logger.warning(f'Email {email.id}: Marked as FAILED after processing error')
         except Exception as commit_err:
-            logger.error(f"Failed to persist FAILED status: {commit_err}")
+            logger.error(f'Failed to persist FAILED status for {email.id}: {commit_err}')
         return False
 
 
@@ -127,18 +160,18 @@ async def run_loop() -> None:
     await init_db()
     redis = await get_redis_client()
 
-    group_name = "intent_workers"
-    consumer_name = f"worker-{random.randint(1000, 9999)}"
+    group_name = 'intent_workers'
+    consumer_name = f'worker-{random.randint(1000, 9999)}'
 
     # Create consumer group if it doesn't exist
     try:
-        await redis.xgroup_create(EMAIL_INTENT_QUEUE, group_name, id="0", mkstream=True)
-        logger.info(f"Consumer group {group_name} created.")
+        await redis.xgroup_create(EMAIL_INTENT_QUEUE, group_name, id='0', mkstream=True)
+        logger.info(f'Consumer group {group_name} created.')
     except Exception as e:
-        if "BUSYGROUP" not in str(e):
-            logger.warning(f"Error creating consumer group: {e}")
+        if 'BUSYGROUP' not in str(e):
+            logger.warning(f'Error creating consumer group: {e}')
 
-    logger.info(f"Worker {consumer_name} started. Listening on {EMAIL_INTENT_QUEUE}...")
+    logger.info(f'Worker {consumer_name} started. Listening on {EMAIL_INTENT_QUEUE}...')
 
     while True:
         try:
@@ -147,7 +180,7 @@ async def run_loop() -> None:
             streams = await redis.xreadgroup(
                 group_name,
                 consumer_name,
-                {EMAIL_INTENT_QUEUE: ">"},
+                {EMAIL_INTENT_QUEUE: '>'},
                 count=1,
                 block=5000,
             )
@@ -157,18 +190,16 @@ async def run_loop() -> None:
 
             for stream_name, messages in streams:
                 for message_id, payload in messages:
-                    email_id_str = payload.get("email_id")
-                    payload_subject = payload.get("subject")
-                    payload_body = payload.get("body")
+                    email_id_str = payload.get('email_id')
+                    payload_subject = payload.get('subject')
+                    payload_body = payload.get('body')
 
                     if not email_id_str:
-                        logger.warning(f"Invalid payload in message {message_id}")
+                        logger.warning(f'Invalid payload in message {message_id}')
                         await redis.xack(EMAIL_INTENT_QUEUE, group_name, message_id)
                         continue
 
-                    logger.info(
-                        f"Processing message {message_id} (Email ID: {email_id_str})"
-                    )
+                    logger.info(f'Processing message {message_id} (Email ID: {email_id_str})')
 
                     processed_successfully = False
                     # Use async context manager for session to avoid leaks and handle errors better
@@ -182,32 +213,26 @@ async def run_loop() -> None:
 
                     async with session_scope() as session:
                         try:
-                            query = select(EmailEvent).where(
-                                EmailEvent.id == email_id_str
-                            )
+                            query = select(EmailEvent).where(EmailEvent.id == email_id_str)
                             result = await session.exec(query)
                             email = result.first()
 
                             if not email:
-                                logger.warning(f"Email {email_id_str} not found.")
+                                logger.warning(f'Email {email_id_str} not found.')
                                 # Acknowledge message if email is not found to prevent redelivery
-                                await redis.xack(
-                                    EMAIL_INTENT_QUEUE, group_name, message_id
-                                )
+                                await redis.xack(EMAIL_INTENT_QUEUE, group_name, message_id)
                                 continue
 
-                            processed_successfully = await process_email(
-                                session, email, payload_subject, payload_body
-                            )
+                            processed_successfully = await process_email(session, email, payload_subject, payload_body)
                         except Exception as inner_e:
-                            logger.error(f"Error processing {email_id_str}: {inner_e}")
+                            logger.error(f'Error processing {email_id_str}: {inner_e}')
 
                     if processed_successfully:
                         await redis.xack(EMAIL_INTENT_QUEUE, group_name, message_id)
-                        logger.info(f"Acknowledged message {message_id}")
+                        logger.info(f'Acknowledged message {message_id}')
 
         except Exception as e:
-            logger.error(f"Worker loop error: {e}")
+            logger.error(f'Worker loop error: {e}')
             await asyncio.sleep(1)
 
 
@@ -217,7 +242,7 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager to start background tasks."""
     # Startup
     task = asyncio.create_task(run_loop())
-    print("Intent worker background task started")
+    logger.info('Intent worker background task started')
     yield
     # Shutdown
     task.cancel()
@@ -230,20 +255,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-@app.get("/")
+@app.get('/')
 async def health_check():
     """Health check endpoint for Cloud Run."""
-    return {"status": "ok", "service": "intent-worker"}
+    return {'status': 'ok', 'service': 'intent-worker'}
 
 
 def main() -> None:
     """Entry point for the worker service."""
-    port = int(os.getenv("PORT", "8080"))
+    port = int(os.getenv('PORT', '8080'))
     # Run uvicorn server
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host='0.0.0.0', port=port)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
