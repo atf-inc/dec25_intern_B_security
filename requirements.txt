@@ -167,7 +167,7 @@ pygments==2.19.2
     # via rich
 pyparsing==3.2.5
     # via httplib2
-python-dotenv==1.2.1
+python-dotenv==1.2.2
     # via
     #   agent-backend (pyproject.toml)
     #   uvicorn
