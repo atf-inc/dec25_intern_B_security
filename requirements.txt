@@ -173,7 +173,7 @@ python-dotenv==1.2.1
     #   uvicorn
 python-json-logger==4.0.0
     # via agent-backend (pyproject.toml)
-python-multipart==0.0.21
+python-multipart==0.0.26
     # via fastapi
 pyyaml==6.0.3
     # via uvicorn
