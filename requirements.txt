@@ -137,7 +137,7 @@ proto-plus==1.27.0
     #   google-cloud-appengine-logging
     #   google-cloud-logging
     #   google-cloud-secret-manager
-protobuf==6.33.5
+protobuf==7.34.1
     # via
     #   google-api-core
     #   google-cloud-appengine-logging
@@ -179,7 +179,7 @@ pyyaml==6.0.3
     # via uvicorn
 redis==7.1.0
     # via agent-backend (pyproject.toml)
-requests==2.33.0
+requests==2.33.1
     # via
     #   google-api-core
     #   requests-oauthlib
