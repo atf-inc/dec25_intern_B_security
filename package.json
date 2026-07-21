@@ -30,7 +30,7 @@
     "db:init": "npm run db:seed"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2",
+    "concurrently": "^9.2.4",
     "shadcn": "^3.6.2"
   },
   "engines": {
